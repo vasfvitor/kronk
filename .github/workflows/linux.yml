@@ -29,7 +29,9 @@ jobs:
           out-file-path: "lib"
           extract: true
       - name: Move llama.cpp files to root directory
-        run: cp ./lib/build/bin/* ./libraries
+        run: |
+          mkdir -p ./libraries
+          cp ./lib/build/bin/* ./libraries
       - name: Add llama.cpp libraries to path
         run: |
           echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/libraries" >> "$GITHUB_ENV"
