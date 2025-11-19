@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"github.com/ardanlabs/llamacpp"
+	"github.com/hybridgroup/yzma/pkg/download"
 )
 
 var (
-	modelChatCompletionsFile = "models/qwen2.5-0.5b-instruct-fp16.gguf"
+	modelChatCompletionsFile = "models/qwen2.5-0.5b-instruct-q8_0.gguf"
 	modelChatVisionFile      = "models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
 	projChatVisionFile       = "models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
 	modelEmbedFile           = "models/embeddinggemma-300m-qat-Q8_0.gguf"
@@ -46,6 +47,7 @@ func TestMain(m *testing.M) {
 	fmt.Println("CONCURRENCY    :", concurrency)
 
 	fmt.Println("LIBRARIES      :")
+	llamacpp.InstallLlama(libPath, download.CPU, false)
 	if err := filepath.Walk(libPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -70,7 +72,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func testChatCompletions(t *testing.T) {
+func TestChatCompletions(t *testing.T) {
 	modelFile := modelChatCompletionsFile
 
 	// -------------------------------------------------------------------------
