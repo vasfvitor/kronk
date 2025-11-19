@@ -37,6 +37,14 @@ func newModel(libPath string, modelFile string, cfg Config, options ...func(m *m
 		return nil, fmt.Errorf("unable to load model: %w", err)
 	}
 
+	// We will validate that we can init the current model.
+	lctx, err := llama.InitFromModel(mdl, cfg.ctxParams())
+	if err != nil {
+		return nil, fmt.Errorf("unable to init model: %w", err)
+	}
+	llama.Synchronize(lctx)
+	llama.Free(lctx)
+
 	vocab := llama.ModelGetVocab(mdl)
 
 	// -------------------------------------------------------------------------

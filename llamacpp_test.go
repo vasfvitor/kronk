@@ -22,9 +22,9 @@ var (
 )
 
 var (
-	libPath   = filepath.Join(os.Getenv("TEST_MODEL_WORKSPACE"), "libraries")
-	modelPath = filepath.Join(os.Getenv("TEST_MODEL_WORKSPACE"), "models")
-	imageFile = filepath.Join(os.Getenv("TEST_MODEL_WORKSPACE"), "samples/giraffe.jpg")
+	libPath   = "libraries/"
+	modelPath = "models/"
+	imageFile = "samples/giraffe.jpg"
 )
 
 func TestMain(m *testing.M) {

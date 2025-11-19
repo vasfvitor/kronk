@@ -48,5 +48,4 @@ jobs:
           curl -Lo ./models/embeddinggemma-300m-qat-Q8_0.gguf https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true
       - name: Run unit tests
         run: |
-          export TEST_MODEL_WORKSPACE=./
           go test -v -count=1
