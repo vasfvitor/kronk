@@ -2,7 +2,7 @@ module github.com/ardanlabs/llamacpp
 
 go 1.25.3
 
-require github.com/hybridgroup/yzma v0.9.1-0.20251116180121-e2b6e555c164
+require github.com/hybridgroup/yzma v0.9.1-0.20251119191510-c58adaf7296f
 
 require (
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
