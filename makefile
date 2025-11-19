@@ -7,7 +7,7 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 
 test:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:libraries && \
-	go test -run TestChatCompletions -v -count=1
+	go test -v -count=1
 
 # ==============================================================================
 # Go Modules support

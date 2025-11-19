@@ -27,8 +27,8 @@ func newModel(libPath string, modelFile string, cfg Config, options ...func(m *m
 
 	// -------------------------------------------------------------------------
 
-	cfg.setLog()
 	llama.Init()
+	cfg.setLog()
 
 	// -------------------------------------------------------------------------
 

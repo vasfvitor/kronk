@@ -134,6 +134,7 @@ func TestChatVision(t *testing.T) {
 	const concurrency = 3
 
 	cfg := llamacpp.Config{
+		LogSet:        llamacpp.LogSilent,
 		ContextWindow: 1024 * 32,
 	}
 
@@ -201,6 +202,7 @@ func TestEmbedding(t *testing.T) {
 	const concurrency = 3
 
 	cfg := llamacpp.Config{
+		LogSet:        llamacpp.LogSilent,
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	}
