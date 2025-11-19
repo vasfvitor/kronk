@@ -79,7 +79,6 @@ func TestChatCompletions(t *testing.T) {
 	// -------------------------------------------------------------------------
 
 	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
-		LogSet:        llamacpp.LogSilent,
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
@@ -143,7 +142,6 @@ func TestChatVision(t *testing.T) {
 	// -------------------------------------------------------------------------
 
 	cfg := llamacpp.Config{
-		LogSet:        llamacpp.LogSilent,
 		ContextWindow: 1024 * 32,
 	}
 
@@ -206,7 +204,6 @@ func TestEmbedding(t *testing.T) {
 	// -------------------------------------------------------------------------
 
 	cfg := llamacpp.Config{
-		LogSet:        llamacpp.LogSilent,
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	}
