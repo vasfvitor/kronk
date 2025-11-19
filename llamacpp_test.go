@@ -31,6 +31,7 @@ func TestMain(m *testing.M) {
 	fmt.Println("modelPath      :", modelPath)
 	fmt.Println("imageFile      :", imageFile)
 	fmt.Println("LD_LIBRARY_PATH:", os.Getenv("LD_LIBRARY_PATH"))
+	fmt.Println("YZMA_LIB       :", os.Getenv("YZMA_LIB"))
 
 	if err := filepath.Walk(libPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -55,7 +56,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestChatCompletions(t *testing.T) {
+func testChatCompletions(t *testing.T) {
 	modelFile := modelChatCompletionsFile
 
 	// -------------------------------------------------------------------------

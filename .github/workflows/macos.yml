@@ -49,4 +49,5 @@ jobs:
       - name: Run unit tests
         run: |
           export LD_LIBRARY_PATH=libraries
+          export YZMA_LIB=libraries
           go test -v -count=1
