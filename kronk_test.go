@@ -48,7 +48,11 @@ func TestMain(m *testing.M) {
 	fmt.Println("CONCURRENCY    :", concurrency)
 
 	fmt.Println("LIBRARIES:")
-	kronk.InstallLlama(libPath, download.CPU, true)
+	if err := kronk.InstallLlama(libPath, download.CPU, true); err != nil {
+		fmt.Printf("Failed to install llama: %s: error: %s\n", libPath, err)
+		os.Exit(1)
+	}
+
 	if err := filepath.Walk(libPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -71,7 +75,7 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
-		fmt.Println("Failed to init the llamacpp library")
+		fmt.Printf("Failed to init the llamacpp library: %s: error: %s\n", libPath, err)
 		os.Exit(1)
 	}
 
