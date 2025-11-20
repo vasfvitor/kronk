@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -146,9 +147,9 @@ func TestChatCompletions(t *testing.T) {
 }
 
 func TestChatVision(t *testing.T) {
-	// if runtime.GOOS == "darwin" {
-	// 	t.Skip("skipping test since it takes too long to run")
-	// }
+	if runtime.GOOS == "darwin" && os.Getenv("RUN_MACOS") == "" {
+		t.Skip("skipping test since it takes too long to run")
+	}
 
 	modelFile := modelChatVisionFile
 	projFile := projChatVisionFile
