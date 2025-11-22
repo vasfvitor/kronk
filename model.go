@@ -108,28 +108,18 @@ func (m *model) processTokens(ctx context.Context, mode string, prompt string, l
 	var outputTokens int
 	var contextTokens int
 	var tokens []llama.Token
+	var batch llama.Batch
+
+	tokens = llama.Tokenize(m.vocab, prompt, true, true)
+	batch = llama.BatchGetOne(tokens)
+
+	inputTokens = int(batch.NTokens)
+	inputTokens += inputTokens
 
 	switch mode {
-	case modeChat:
-		tokens = llama.Tokenize(m.vocab, prompt, true, true)
-
 	case modeVision:
 		tokens = []llama.Token{llama.SamplerSample(sampler, lctx, -1)}
-	}
-
-	batch := llama.BatchGetOne(tokens)
-
-	switch mode {
-	case modeChat:
-		inputTokens = int(batch.NTokens)
-		contextTokens += inputTokens
-
-	case modeVision:
-		inpTokens := llama.Tokenize(m.vocab, prompt, true, true)
-		inpBatch := llama.BatchGetOne(inpTokens)
-
-		inputTokens = int(inpBatch.NTokens)
-		contextTokens += inputTokens
+		batch = llama.BatchGetOne(tokens)
 
 		outputTokens = int(batch.NTokens)
 		contextTokens += outputTokens
