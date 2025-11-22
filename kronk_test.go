@@ -91,7 +91,7 @@ func initChatTest(t *testing.T) (*kronk.Kronk, []kronk.ChatMessage, kronk.Params
 
 	// -------------------------------------------------------------------------
 
-	krn, err := kronk.New(concurrency, modelFile, kronk.Config{
+	krn, err := kronk.New(concurrency, modelFile, kronk.ModelConfig{
 		ContextWindow: 1024 * 4,
 	})
 	if err != nil {
@@ -200,7 +200,7 @@ func initVisionTest(t *testing.T) (*kronk.Kronk, kronk.ChatMessage, kronk.Params
 
 	// -------------------------------------------------------------------------
 
-	cfg := kronk.Config{
+	cfg := kronk.ModelConfig{
 		ContextWindow: 1024 * 4,
 	}
 
@@ -302,7 +302,7 @@ func TestEmbedding(t *testing.T) {
 
 	// -------------------------------------------------------------------------
 
-	cfg := kronk.Config{
+	cfg := kronk.ModelConfig{
 		ContextWindow: 1024 * 4,
 		Embeddings:    true,
 	}
