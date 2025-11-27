@@ -30,16 +30,13 @@ llama-bench:
 # Tests
 
 test:
-	export LD_LIBRARY_PATH=libraries && \
-	export CONCURRENCY=1 && \
+	export LD_LIBRARY_PATH=tests/libraries && \
+	export MODEL_INSTANCES=1 && \
+	export GOROUTINES=3 && \
 	export RUN_MACOS=1 && \
 	export INSTALL_LLAMA=1 && \
-	CGO_ENABLED=0 go test -v -count=1 ./tests
-
-test-upgrade: deps-upgrade
-	export LD_LIBRARY_PATH=libraries && \
-	export CONCURRENCY=3 && \
-	export INSTALL_LLAMA=1 && \
+	export RUN_IN_PARALLEL=1 && \
+	export GITHUB_WORKSPACE=$(shell pwd) && \
 	CGO_ENABLED=0 go test -v -count=1 ./tests
 
 # ==============================================================================
