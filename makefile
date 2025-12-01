@@ -27,6 +27,11 @@ install-reranker-model:
 llama-bench:
 	libraries/llama-bench --list-devices
 
+# Use this to rebuild tooling when new versions of Go are released.
+dev-gotooling:
+	go install honnef.co/go/tools/cmd/staticcheck@latest
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+
 # ==============================================================================
 # Tests
 
@@ -47,6 +52,9 @@ tidy:
 deps-upgrade:
 	go get -u -v ./...
 	go mod tidy
+
+yzma-latest:
+	GOPROXY=direct go get github.com/hybridgroup/yzma@main
 
 # ==============================================================================
 # Examples
