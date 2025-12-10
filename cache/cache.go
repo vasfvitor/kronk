@@ -1,10 +1,12 @@
-// Package krn manages the creation and unloading of kronk APIs for
-// specific models.
-package krn
+// Package cache manages a cache of kronk APIs for specific models. Used by
+// the model server to manage the number of models that are maintained in
+// memory at any given time.
+package cache
 
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -70,9 +72,9 @@ func validateConfig(cfg Config) Config {
 	return cfg
 }
 
-// Manager manages a set of Kronk APIs for use. It maintains a cache of these
+// Cache manages a set of Kronk APIs for use. It maintains a cache of these
 // APIs and will unload over time if not in use.
-type Manager struct {
+type Cache struct {
 	log           *logger.Logger
 	libPath       string
 	arch          download.Arch
@@ -86,11 +88,11 @@ type Manager struct {
 	itemsInCache  atomic.Int32
 }
 
-// NewManager constructs the manager for use.
-func NewManager(cfg Config) (*Manager, error) {
+// NewCache constructs the manager for use.
+func NewCache(cfg Config) (*Cache, error) {
 	cfg = validateConfig(cfg)
 
-	mgr := Manager{
+	c := Cache{
 		log:           cfg.Log,
 		arch:          cfg.Arch,
 		os:            cfg.OS,
@@ -104,8 +106,8 @@ func NewManager(cfg Config) (*Manager, error) {
 
 	opt := otter.Options[string, *kronk.Kronk]{
 		MaximumSize:      cfg.MaxInCache,
-		ExpiryCalculator: otter.ExpiryAccessing[string, *kronk.Kronk](cfg.CacheTTL),
-		OnDeletion:       mgr.eviction,
+		ExpiryCalculator: otter.ExpiryWriting[string, *kronk.Kronk](cfg.CacheTTL),
+		OnDeletion:       c.eviction,
 	}
 
 	cache, err := otter.New(&opt)
@@ -113,22 +115,22 @@ func NewManager(cfg Config) (*Manager, error) {
 		return nil, fmt.Errorf("constructing cache: %w", err)
 	}
 
-	mgr.cache = cache
+	c.cache = cache
 
-	return &mgr, nil
+	return &c, nil
 }
 
 // Shutdown releases all apis from the cache and performs a proper unloading.
-func (mgr *Manager) Shutdown(ctx context.Context) error {
+func (c *Cache) Shutdown(ctx context.Context) error {
 	if _, exists := ctx.Deadline(); !exists {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 45*time.Second)
 		defer cancel()
 	}
 
-	mgr.cache.InvalidateAll()
+	c.cache.InvalidateAll()
 
-	for mgr.itemsInCache.Load() > 0 {
+	for c.itemsInCache.Load() > 0 {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -141,56 +143,98 @@ func (mgr *Manager) Shutdown(ctx context.Context) error {
 }
 
 // LibPath returns the location of the llama.cpp libraries.
-func (mgr *Manager) LibPath() string {
-	return mgr.libPath
+func (c *Cache) LibPath() string {
+	return c.libPath
 }
 
 // ModelPath returns the location of the models.
-func (mgr *Manager) ModelPath() string {
-	return mgr.modelPath
+func (c *Cache) ModelPath() string {
+	return c.modelPath
 }
 
 // Arch returns the hardware being used.
-func (mgr *Manager) Arch() download.Arch {
-	return mgr.arch
+func (c *Cache) Arch() download.Arch {
+	return c.arch
 }
 
 // OS returns the operating system being used.
-func (mgr *Manager) OS() download.OS {
-	return mgr.os
+func (c *Cache) OS() download.OS {
+	return c.os
 }
 
 // Processor returns the processor being used.
-func (mgr *Manager) Processor() download.Processor {
-	return mgr.processor
+func (c *Cache) Processor() download.Processor {
+	return c.processor
+}
+
+// ModelStatus returns information about the current models in the cache.
+func (c *Cache) ModelStatus() ([]ModelDetail, error) {
+
+	// Extract the models currently in the cache.
+	var models []otter.Entry[string, *kronk.Kronk]
+	for entry := range c.cache.Coldest() {
+		models = append(models, entry)
+	}
+
+	// Retrieve the models installed locally.
+	list, err := tools.ListModels(defaults.ModelsDir(""))
+	if err != nil {
+		return nil, err
+	}
+
+	// Match the model in the cache with a locally stored model
+	// so we can get information about that model.
+	ps := make([]ModelDetail, 0, len(models))
+ids:
+	for _, model := range models {
+		for _, mi := range list {
+			id := strings.ToLower(mi.ID)
+
+			if id == model.Key {
+				ps = append(ps, ModelDetail{
+					ID:            mi.ID,
+					OwnedBy:       mi.OwnedBy,
+					ModelFamily:   mi.ModelFamily,
+					Size:          mi.Size,
+					ExpiresAt:     model.ExpiresAt(),
+					ActiveStreams: model.Value.ActiveStreams(),
+				})
+				continue ids
+			}
+		}
+	}
+
+	return ps, nil
 }
 
 // AquireModel will provide a kronk API for the specified model. If the model
 // is not in the cache, an API for the model will be created.
-func (mgr *Manager) AquireModel(ctx context.Context, modelName string) (*kronk.Kronk, error) {
-	krn, exists := mgr.cache.GetIfPresent(modelName)
+func (c *Cache) AquireModel(ctx context.Context, modelID string) (*kronk.Kronk, error) {
+	modelID = strings.ToLower(modelID)
+
+	krn, exists := c.cache.GetIfPresent(modelID)
 	if exists {
 		return krn, nil
 	}
 
-	fi, err := tools.FindModel(mgr.modelPath, modelName)
+	fi, err := tools.FindModel(c.modelPath, modelID)
 	if err != nil {
 		return nil, fmt.Errorf("aquire-model: %w", err)
 	}
 
-	krn, err = kronk.New(mgr.instances, model.Config{
+	krn, err = kronk.New(c.instances, model.Config{
 		ModelFile:      fi.ModelFile,
 		ProjectionFile: fi.ProjFile,
-		Device:         mgr.device,
-		ContextWindow:  mgr.contextWindow,
+		Device:         c.device,
+		ContextWindow:  c.contextWindow,
 	})
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
-	mgr.cache.Set(modelName, krn)
-	mgr.itemsInCache.Add(1)
+	c.cache.Set(modelID, krn)
+	c.itemsInCache.Add(1)
 
 	totalEntries := len(krn.SystemInfo())*2 + (5 * 2)
 	info := make([]any, 0, totalEntries)
@@ -202,7 +246,7 @@ func (mgr *Manager) AquireModel(ctx context.Context, modelName string) (*kronk.K
 	info = append(info, "status")
 	info = append(info, "kronk cache add")
 	info = append(info, "model-name")
-	info = append(info, modelName)
+	info = append(info, modelID)
 	info = append(info, "contextWindow")
 	info = append(info, krn.ModelConfig().ContextWindow)
 	info = append(info, "isGPTModel")
@@ -210,20 +254,20 @@ func (mgr *Manager) AquireModel(ctx context.Context, modelName string) (*kronk.K
 	info = append(info, "isEmbedModel")
 	info = append(info, krn.ModelInfo().IsEmbedModel)
 
-	mgr.log.Info(ctx, "acquire-model", info...)
+	c.log.Info(ctx, "acquire-model", info...)
 
 	return krn, nil
 }
 
-func (mgr *Manager) eviction(event otter.DeletionEvent[string, *kronk.Kronk]) {
+func (c *Cache) eviction(event otter.DeletionEvent[string, *kronk.Kronk]) {
 	const unloadTimeout = 5 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), unloadTimeout)
 	defer cancel()
 
-	mgr.log.Info(ctx, "kronk cache eviction", "key", event.Key, "cause", event.Cause, "was-evicted", event.WasEvicted())
+	c.log.Info(ctx, "kronk cache eviction", "key", event.Key, "cause", event.Cause, "was-evicted", event.WasEvicted())
 	if err := event.Value.Unload(ctx); err != nil {
-		mgr.log.Info(ctx, "kronk cache eviction", "key", event.Key, "ERROR", err)
+		c.log.Info(ctx, "kronk cache eviction", "key", event.Key, "ERROR", err)
 	}
 
-	mgr.itemsInCache.Add(-1)
+	c.itemsInCache.Add(-1)
 }

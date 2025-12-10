@@ -1,4 +1,4 @@
-package krn_test
+package cache_test
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/kronk"
-	"github.com/ardanlabs/kronk/cmd/kronk/website/app/sdk/krn"
+	"github.com/ardanlabs/kronk/cache"
 	"github.com/ardanlabs/kronk/cmd/kronk/website/foundation/logger"
 	"github.com/ardanlabs/kronk/defaults"
 	"github.com/ardanlabs/kronk/tools"
@@ -21,12 +21,12 @@ func Test_NewManager(t *testing.T) {
 	log := initKronk(t)
 
 	t.Run("default config values", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:       log,
 			ModelPath: defaults.ModelsDir(""),
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -34,7 +34,7 @@ func Test_NewManager(t *testing.T) {
 	})
 
 	t.Run("custom config values", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:            log,
 			ModelPath:      defaults.ModelsDir(""),
 			MaxInCache:     5,
@@ -42,7 +42,7 @@ func Test_NewManager(t *testing.T) {
 			CacheTTL:       10 * time.Minute,
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -54,9 +54,9 @@ func Test_AcquireModel(t *testing.T) {
 	initKronk(t)
 	log := logger.New(io.Discard, logger.LevelInfo, "test", nil)
 
-	modelName := findAvailableModel(t, "")
+	modelID := findAvailableModel(t, "")
 
-	cfg := krn.Config{
+	cfg := cache.Config{
 		Log:            log,
 		ModelPath:      defaults.ModelsDir(""),
 		MaxInCache:     3,
@@ -64,7 +64,7 @@ func Test_AcquireModel(t *testing.T) {
 		CacheTTL:       5 * time.Minute,
 	}
 
-	mgr, err := krn.NewManager(cfg)
+	mgr, err := cache.NewCache(cfg)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -72,7 +72,7 @@ func Test_AcquireModel(t *testing.T) {
 
 	t.Run("acquire model first time", func(t *testing.T) {
 		ctx := context.Background()
-		k, err := mgr.AquireModel(ctx, modelName)
+		k, err := mgr.AquireModel(ctx, modelID)
 		if err != nil {
 			t.Fatalf("expected no error acquiring model, got: %v", err)
 		}
@@ -83,12 +83,12 @@ func Test_AcquireModel(t *testing.T) {
 
 	t.Run("acquire same model from cache", func(t *testing.T) {
 		ctx := context.Background()
-		k1, err := mgr.AquireModel(ctx, modelName)
+		k1, err := mgr.AquireModel(ctx, modelID)
 		if err != nil {
 			t.Fatalf("expected no error acquiring model, got: %v", err)
 		}
 
-		k2, err := mgr.AquireModel(ctx, modelName)
+		k2, err := mgr.AquireModel(ctx, modelID)
 		if err != nil {
 			t.Fatalf("expected no error acquiring cached model, got: %v", err)
 		}
@@ -110,15 +110,15 @@ func Test_AcquireModel(t *testing.T) {
 func Test_Shutdown(t *testing.T) {
 	log := initKronk(t)
 
-	modelName := findAvailableModel(t, "")
+	modelID := findAvailableModel(t, "")
 
 	t.Run("shutdown empty cache", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:       log,
 			ModelPath: defaults.ModelsDir(""),
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -132,7 +132,7 @@ func Test_Shutdown(t *testing.T) {
 	})
 
 	t.Run("shutdown with loaded models", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:            log,
 			ModelPath:      defaults.ModelsDir(""),
 			MaxInCache:     3,
@@ -140,13 +140,13 @@ func Test_Shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
 
 		ctx := context.Background()
-		_, err = mgr.AquireModel(ctx, modelName)
+		_, err = mgr.AquireModel(ctx, modelID)
 		if err != nil {
 			t.Fatalf("expected no error acquiring model, got: %v", err)
 		}
@@ -162,7 +162,7 @@ func Test_Shutdown(t *testing.T) {
 	})
 
 	t.Run("shutdown timeout expires", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:            log,
 			ModelPath:      defaults.ModelsDir(""),
 			MaxInCache:     3,
@@ -170,13 +170,13 @@ func Test_Shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
 
 		ctx := context.Background()
-		_, err = mgr.AquireModel(ctx, modelName)
+		_, err = mgr.AquireModel(ctx, modelID)
 		if err != nil {
 			t.Fatalf("expected no error acquiring model, got: %v", err)
 		}
@@ -193,7 +193,7 @@ func Test_Shutdown(t *testing.T) {
 	})
 
 	t.Run("shutdown with cancelled context", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:            log,
 			ModelPath:      defaults.ModelsDir(""),
 			MaxInCache:     3,
@@ -201,13 +201,13 @@ func Test_Shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
 
 		ctx := context.Background()
-		_, err = mgr.AquireModel(ctx, modelName)
+		_, err = mgr.AquireModel(ctx, modelID)
 		if err != nil {
 			t.Fatalf("expected no error acquiring model, got: %v", err)
 		}
@@ -222,7 +222,7 @@ func Test_Shutdown(t *testing.T) {
 	})
 
 	t.Run("shutdown blocks until eviction completes", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:            log,
 			ModelPath:      defaults.ModelsDir(""),
 			MaxInCache:     3,
@@ -230,13 +230,13 @@ func Test_Shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
 
 		ctx := context.Background()
-		_, err = mgr.AquireModel(ctx, modelName)
+		_, err = mgr.AquireModel(ctx, modelID)
 		if err != nil {
 			t.Fatalf("expected no error acquiring model, got: %v", err)
 		}
@@ -270,11 +270,11 @@ func Test_Shutdown(t *testing.T) {
 func Test_Eviction(t *testing.T) {
 	log := initKronk(t)
 
-	modelName1 := findAvailableModel(t, "")
-	modelName2 := findAvailableModel(t, modelName1)
+	modelID1 := findAvailableModel(t, "")
+	modelID2 := findAvailableModel(t, modelID1)
 
 	t.Run("eviction on TTL expiry", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:            log,
 			ModelPath:      defaults.ModelsDir(""),
 			MaxInCache:     3,
@@ -282,7 +282,7 @@ func Test_Eviction(t *testing.T) {
 			CacheTTL:       500 * time.Millisecond,
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -290,7 +290,7 @@ func Test_Eviction(t *testing.T) {
 
 		ctx := context.Background()
 
-		k1, err := mgr.AquireModel(ctx, modelName1)
+		k1, err := mgr.AquireModel(ctx, modelID1)
 		if err != nil {
 			t.Fatalf("expected no error acquiring model, got: %v", err)
 		}
@@ -298,7 +298,7 @@ func Test_Eviction(t *testing.T) {
 		t.Log("waiting for TTL to expire...")
 		time.Sleep(2 * time.Second)
 
-		k2, err := mgr.AquireModel(ctx, modelName1)
+		k2, err := mgr.AquireModel(ctx, modelID1)
 		if err != nil {
 			t.Fatalf("expected no error re-acquiring model after eviction, got: %v", err)
 		}
@@ -309,7 +309,7 @@ func Test_Eviction(t *testing.T) {
 	})
 
 	t.Run("eviction on capacity exceeded", func(t *testing.T) {
-		cfg := krn.Config{
+		cfg := cache.Config{
 			Log:            log,
 			ModelPath:      defaults.ModelsDir(""),
 			MaxInCache:     1,
@@ -317,7 +317,7 @@ func Test_Eviction(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := krn.NewManager(cfg)
+		mgr, err := cache.NewCache(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -325,14 +325,14 @@ func Test_Eviction(t *testing.T) {
 
 		ctx := context.Background()
 
-		k1, err := mgr.AquireModel(ctx, modelName1)
+		k1, err := mgr.AquireModel(ctx, modelID1)
 		if err != nil {
 			t.Fatalf("expected no error acquiring first model, got: %v", err)
 		}
 
 		time.Sleep(time.Second)
 
-		k2, err := mgr.AquireModel(ctx, modelName2)
+		k2, err := mgr.AquireModel(ctx, modelID2)
 		if err != nil {
 			t.Fatalf("expected no error acquiring first model, got: %v", err)
 		}
@@ -376,7 +376,7 @@ func initKronk(t *testing.T) *logger.Logger {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	tag, err := tools.DownloadLibraries(ctx, tools.FmtLogger, cfg)
+	tag, err := tools.DownloadLibraries(ctx, kronk.FmtLogger, cfg)
 	if err != nil {
 		t.Fatalf("unable to install llama.cpp: %s", err)
 	}
@@ -399,7 +399,7 @@ func initKronk(t *testing.T) *logger.Logger {
 	return log
 }
 
-func findAvailableModel(t *testing.T, notModelName string) string {
+func findAvailableModel(t *testing.T, notModelID string) string {
 	modelFiles, err := tools.ListModels(defaults.ModelsDir(""))
 	if err != nil {
 		t.Skip("no models available for testing - skipping")
@@ -408,7 +408,7 @@ func findAvailableModel(t *testing.T, notModelName string) string {
 	var modelID string
 	for range len(modelFiles) {
 		idx := rand.Intn(len(modelFiles))
-		if modelFiles[idx].ID != notModelName {
+		if modelFiles[idx].ID != notModelID {
 			modelID = modelFiles[idx].ID
 		}
 	}
