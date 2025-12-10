@@ -20,16 +20,8 @@ import (
 	"github.com/nikolalohinski/gonja/v2"
 )
 
-/*
-	- PS command
-	- Detach option on the model server
-	- Expose Embedding endpoint
-	- There is a setting that allows the model to return multiple
-	  tool calls. Parallel bool json:"parallel"
-*/
-
 // Version contains the current version of the kronk package.
-const Version = "1.1.5"
+const Version = "1.1.6"
 
 // =============================================================================
 

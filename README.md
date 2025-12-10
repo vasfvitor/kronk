@@ -4,7 +4,7 @@
 
 This project lets you use Go for hardware accelerated local inference with llama.cpp directly integrated into your applications via the [yzma](https://github.com/hybridgroup/yzma) module. Kronk provides a high-level API that feels similar to using an OpenAI compatible API.
 
-The project provides a backwards compatibility guarantee with the kronk api. The kronk cli tooling and server is currently under development and is subject to change.
+This project also provides a model server for chat completions and embeddings. The server is compatible with the OpebWebUI project.
 
 Copyright 2025 Ardan Labs  
 hello@ardanlabs.com
@@ -51,11 +51,13 @@ Available Commands:
   help        Help about any command
   libs        Install or upgrade llama.cpp libraries
   list        List models
+  logs        Stream Kronk model server logs
   ps          List running models
   pull        Pull a model from the web
   remove      Remove a model
   server      Start Kronk model server
   show        Show information for a model
+  stop        Stop the running Kronk model server
 
 Flags:
   -h, --help      help for kronk
@@ -63,6 +65,12 @@ Flags:
 
 Use "kronk [command] --help" for more information about a command.
 ```
+
+## Roadmap
+
+Here is the existing [ROADMAP](ROADMAP.md) for the project and the things being worked on or things that would be nice to have. The roadmap is not in any particular order.
+
+If you are interested in helping in any way, please send an email to [Bill Kennedy](mailto:bill@ardanlabs.com).
 
 ## Architecture
 
