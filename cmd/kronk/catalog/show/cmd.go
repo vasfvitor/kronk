@@ -1,9 +1,11 @@
 package show
 
 import (
+	"context"
 	"fmt"
 	"os"
 
+	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/spf13/cobra"
 )
 
@@ -32,11 +34,18 @@ func main(cmd *cobra.Command, args []string) {
 func run(cmd *cobra.Command, args []string) error {
 	local, _ := cmd.Flags().GetBool("local")
 
-	var err error
+	catalog, err := catalog.New()
+	if err != nil {
+		return fmt.Errorf("unable to create catalog system: %w", err)
+	}
+
+	if err := catalog.Download(context.Background()); err != nil {
+		return fmt.Errorf("unable to download catalog: %w", err)
+	}
 
 	switch local {
 	case true:
-		err = runLocal(args)
+		err = runLocal(catalog, args)
 	default:
 		err = runWeb(args)
 	}

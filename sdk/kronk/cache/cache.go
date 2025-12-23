@@ -12,15 +12,15 @@ import (
 
 	"github.com/ardanlabs/kronk/cmd/server/foundation/logger"
 	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/ardanlabs/kronk/sdk/kronk/template"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/hybridgroup/yzma/pkg/download"
 	"github.com/maypok86/otter/v2"
 )
 
 // Config represents setting for the kronk manager.
+//
+// LibPath: Location of libraries. Leave empty for default location.
 //
 // ModelPath: Location of models. Leave empty for default location.
 //
@@ -38,15 +38,13 @@ import (
 // what is in the model metadata if set to 0. If no metadata is found, 4096
 // is the default.
 //
-// TTL: Defines the time an existing model can live in the cache without
+// CacheTTL: Defines the time an existing model can live in the cache without
 // being used.
 type Config struct {
 	Log            *logger.Logger
-	LibPath        string
 	Arch           download.Arch
 	OS             download.OS
 	Processor      download.Processor
-	ModelPath      string
 	Device         string
 	MaxInCache     int
 	ModelInstances int
@@ -55,9 +53,6 @@ type Config struct {
 }
 
 func validateConfig(cfg Config) Config {
-	cfg.LibPath = defaults.ModelsDir(cfg.LibPath)
-	cfg.ModelPath = defaults.ModelsDir(cfg.ModelPath)
-
 	if cfg.MaxInCache <= 0 {
 		cfg.MaxInCache = 3
 	}
@@ -77,32 +72,35 @@ func validateConfig(cfg Config) Config {
 // APIs and will unload over time if not in use.
 type Cache struct {
 	log           *logger.Logger
-	libPath       string
 	arch          download.Arch
 	os            download.OS
 	processor     download.Processor
-	modelPath     string
 	device        string
 	instances     int
 	contextWindow int
 	cache         *otter.Cache[string, *kronk.Kronk]
 	itemsInCache  atomic.Int32
+	models        *models.Models
 }
 
 // NewCache constructs the manager for use.
 func NewCache(cfg Config) (*Cache, error) {
 	cfg = validateConfig(cfg)
 
+	models, err := models.New()
+	if err != nil {
+		return nil, fmt.Errorf("creating models system: %w", err)
+	}
+
 	c := Cache{
 		log:           cfg.Log,
 		arch:          cfg.Arch,
 		os:            cfg.OS,
 		processor:     cfg.Processor,
-		libPath:       cfg.LibPath,
-		modelPath:     cfg.ModelPath,
 		device:        cfg.Device,
 		instances:     cfg.ModelInstances,
 		contextWindow: cfg.ContextWindow,
+		models:        models,
 	}
 
 	opt := otter.Options[string, *kronk.Kronk]{
@@ -143,16 +141,6 @@ func (c *Cache) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// LibPath returns the location of the llama.cpp libraries.
-func (c *Cache) LibPath() string {
-	return c.libPath
-}
-
-// ModelPath returns the location of the models.
-func (c *Cache) ModelPath() string {
-	return c.modelPath
-}
-
 // Arch returns the hardware being used.
 func (c *Cache) Arch() download.Arch {
 	return c.arch
@@ -178,7 +166,7 @@ func (c *Cache) ModelStatus() ([]ModelDetail, error) {
 	}
 
 	// Retrieve the models installed locally.
-	list, err := models.RetrieveFiles(defaults.ModelsDir(""))
+	list, err := c.models.RetrieveFiles()
 	if err != nil {
 		return nil, err
 	}
@@ -218,12 +206,12 @@ func (c *Cache) AquireModel(ctx context.Context, modelID string) (*kronk.Kronk, 
 		return krn, nil
 	}
 
-	fi, err := models.RetrievePath(c.modelPath, modelID)
+	fi, err := c.models.RetrievePath(modelID)
 	if err != nil {
 		return nil, fmt.Errorf("aquire-model: %w", err)
 	}
 
-	krn, err = kronk.New(c.instances, template.New(), model.Config{
+	krn, err = kronk.New(c.instances, model.Config{
 		Log:           c.log.Info,
 		ModelFile:     fi.ModelFile,
 		ProjFile:      fi.ProjFile,

@@ -25,9 +25,9 @@ import (
 	"github.com/ardanlabs/kronk/cmd/server/foundation/otel"
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/cache"
-	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
+	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/ardanlabs/kronk/sdk/tools/security"
 	"github.com/ardanlabs/kronk/sdk/tools/templates"
 	"google.golang.org/grpc/test/bufconn"
@@ -103,14 +103,12 @@ func run(ctx context.Context, log *logger.Logger, showHelp bool) error {
 			// this even lower.
 		}
 		Model struct {
-			Path          string
 			Device        string
 			MaxInstances  int           `conf:"default:1"`
 			MaxInCache    int           `conf:"default:3"`
 			ContextWindow int           `conf:"default:0"`
 			CacheTTL      time.Duration `conf:"default:5m"`
 		}
-		LibPath      string
 		Arch         string
 		OS           string
 		Processor    string
@@ -238,18 +236,58 @@ func run(ctx context.Context, log *logger.Logger, showHelp bool) error {
 
 	defer authClient.Close()
 
-	// ---------------------------------------------------------------------
-	// Download Catalog and Templates
+	// -------------------------------------------------------------------------
+	// Library System
+
+	log.Info(ctx, "startup", "status", "downloading libraries")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	libs, err := libs.New()
+	if err != nil {
+		return fmt.Errorf("unable to create libs api: %w", err)
+	}
+
+	log.Info(ctx, "startup", "status", "installing/updating libraries", "libPath", libs.LibsPath(), "arch", libs.Arch(), "os", libs.OS(), "processor", libs.Processor(), "update", true)
+
+	if _, err := libs.Download(ctx, kronk.FmtLogger); err != nil {
+		return fmt.Errorf("unable to install llama.cpp: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// Model System
+
+	models, err := models.New()
+	if err != nil {
+		return fmt.Errorf("unable to create catalog system: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// Catalog System
 
 	log.Info(ctx, "startup", "status", "downloading catalog")
 
-	if err := catalog.Download(ctx, defaults.BaseDir("")); err != nil {
+	catalog, err := catalog.New()
+	if err != nil {
+		return fmt.Errorf("unable to create catalog system: %w", err)
+	}
+
+	if err := catalog.Download(ctx); err != nil {
 		return fmt.Errorf("unable to download catalog: %w", err)
 	}
 
+	// -------------------------------------------------------------------------
+	// Template System
+
 	log.Info(ctx, "startup", "status", "downloading templates")
 
-	if err := templates.Download(ctx, defaults.BaseDir("")); err != nil {
+	templates, err := templates.New()
+	if err != nil {
+		return fmt.Errorf("unable to create template system: %w", err)
+	}
+
+	if err := templates.Download(ctx); err != nil {
 		return fmt.Errorf("unable to download templates: %w", err)
 	}
 
@@ -258,38 +296,15 @@ func run(ctx context.Context, log *logger.Logger, showHelp bool) error {
 
 	log.Info(ctx, "startup", "status", "initializing kronk")
 
-	libCfg, err := libs.NewConfig(
-		cfg.LibPath,
-		cfg.Arch,
-		cfg.OS,
-		cfg.Processor,
-		cfg.AllowUpgrade,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	log.Info(ctx, "startup", "status", "installing/updating libraries", "libPath", libCfg.LibPath, "arch", libCfg.Arch, "os", libCfg.OS, "processor", libCfg.Processor, "update", libCfg.AllowUpgrade)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	if _, err := libs.Download(ctx, log.Info, libCfg); err != nil {
-		return fmt.Errorf("unable to install llama.cpp: %w", err)
-	}
-
-	if err := kronk.Init(libCfg.LibPath, kronk.LogLevel(cfg.LlamaLog)); err != nil {
+	if err := kronk.Init(); err != nil {
 		return fmt.Errorf("installation invalid: %w", err)
 	}
 
 	cache, err := cache.NewCache(cache.Config{
 		Log:            log,
-		LibPath:        libCfg.LibPath,
-		Arch:           libCfg.Arch,
-		OS:             libCfg.OS,
-		Processor:      libCfg.Processor,
-		ModelPath:      cfg.Model.Path,
+		Arch:           libs.Arch(),
+		OS:             libs.OS(),
+		Processor:      libs.Processor(),
 		Device:         cfg.Model.Device,
 		MaxInCache:     cfg.Model.MaxInCache,
 		ModelInstances: cfg.Model.MaxInstances,
@@ -337,6 +352,10 @@ func run(ctx context.Context, log *logger.Logger, showHelp bool) error {
 		AuthClient: authClient,
 		Tracer:     tracer,
 		Cache:      cache,
+		Libs:       libs,
+		Models:     models,
+		Catalog:    catalog,
+		Templates:  templates,
 	}
 
 	webAPI := mux.WebAPI(cfgMux,

@@ -14,10 +14,10 @@ import (
 	"github.com/ardanlabs/kronk/cmd/server/foundation/logger"
 	"github.com/ardanlabs/kronk/cmd/server/foundation/web"
 	"github.com/ardanlabs/kronk/sdk/kronk/cache"
-	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
+	"github.com/ardanlabs/kronk/sdk/tools/templates"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -25,18 +25,26 @@ type app struct {
 	log        *logger.Logger
 	cache      *cache.Cache
 	authClient *authclient.Client
+	libs       *libs.Libs
+	models     *models.Models
+	catalog    *catalog.Catalog
+	templates  *templates.Templates
 }
 
-func newApp(log *logger.Logger, cache *cache.Cache, authClient *authclient.Client) *app {
+func newApp(cfg Config) *app {
 	return &app{
-		log:        log,
-		cache:      cache,
-		authClient: authClient,
+		log:        cfg.Log,
+		cache:      cfg.Cache,
+		authClient: cfg.AuthClient,
+		libs:       cfg.Libs,
+		models:     cfg.Models,
+		catalog:    cfg.Catalog,
+		templates:  cfg.Templates,
 	}
 }
 
 func (a *app) listLibs(ctx context.Context, r *http.Request) web.Encoder {
-	versionTag, err := libs.VersionInformation(a.cache.LibPath())
+	versionTag, err := a.libs.VersionInformation()
 	if err != nil {
 		return errs.New(errs.Internal, err)
 	}
@@ -59,14 +67,6 @@ func (a *app) pullLibs(ctx context.Context, r *http.Request) web.Encoder {
 
 	// -------------------------------------------------------------------------
 
-	cfg := libs.Config{
-		LibPath:      a.cache.LibPath(),
-		Arch:         a.cache.Arch(),
-		OS:           a.cache.OS(),
-		AllowUpgrade: true,
-		Processor:    a.cache.Processor(),
-	}
-
 	logger := func(ctx context.Context, msg string, args ...any) {
 		var sb strings.Builder
 		for i := 0; i < len(args); i += 2 {
@@ -83,7 +83,7 @@ func (a *app) pullLibs(ctx context.Context, r *http.Request) web.Encoder {
 		f.Flush()
 	}
 
-	vi, err := libs.Download(ctx, logger, cfg)
+	vi, err := a.libs.Download(ctx, logger)
 	if err != nil {
 		ver := toAppVersion(err.Error(), libs.VersionTag{})
 
@@ -104,9 +104,7 @@ func (a *app) pullLibs(ctx context.Context, r *http.Request) web.Encoder {
 }
 
 func (a *app) indexModels(ctx context.Context, r *http.Request) web.Encoder {
-	modelPath := a.cache.ModelPath()
-
-	if err := models.BuildIndex(modelPath); err != nil {
+	if err := a.models.BuildIndex(); err != nil {
 		return errs.Errorf(errs.Internal, "unable to build model index: %s", err)
 	}
 
@@ -114,9 +112,7 @@ func (a *app) indexModels(ctx context.Context, r *http.Request) web.Encoder {
 }
 
 func (a *app) listModels(ctx context.Context, r *http.Request) web.Encoder {
-	modelPath := a.cache.ModelPath()
-
-	models, err := models.RetrieveFiles(modelPath)
+	models, err := a.models.RetrieveFiles()
 	if err != nil {
 		return errs.Errorf(errs.Internal, "unable to retrieve model list: %s", err)
 	}
@@ -156,8 +152,6 @@ func (a *app) pullModels(ctx context.Context, r *http.Request) web.Encoder {
 
 	// -------------------------------------------------------------------------
 
-	modelPath := a.cache.ModelPath()
-
 	logger := func(ctx context.Context, msg string, args ...any) {
 		var sb strings.Builder
 		for i := 0; i < len(args); i += 2 {
@@ -174,7 +168,7 @@ func (a *app) pullModels(ctx context.Context, r *http.Request) web.Encoder {
 		f.Flush()
 	}
 
-	mp, err := models.Download(ctx, logger, req.ModelURL, req.ProjURL, modelPath)
+	mp, err := a.models.Download(ctx, logger, req.ModelURL, req.ProjURL)
 	if err != nil {
 		ver := toAppPull(err.Error(), models.Path{})
 
@@ -195,34 +189,40 @@ func (a *app) pullModels(ctx context.Context, r *http.Request) web.Encoder {
 }
 
 func (a *app) removeModel(ctx context.Context, r *http.Request) web.Encoder {
-	modelPath := a.cache.ModelPath()
 	modelName := web.Param(r, "model")
 
 	a.log.Info(ctx, "tool-remove", "modelName", modelName)
 
-	mp, err := models.RetrievePath(modelPath, modelName)
+	mp, err := a.models.RetrievePath(modelName)
 	if err != nil {
 		return errs.New(errs.InvalidArgument, err)
 	}
 
-	if err := models.Remove(modelPath, mp); err != nil {
+	if err := a.models.Remove(mp); err != nil {
 		return errs.Errorf(errs.Internal, "failed to remove model: %s", err)
 	}
 
 	return nil
 }
 
-func (a *app) showModel(ctx context.Context, r *http.Request) web.Encoder {
-	libPath := a.cache.LibPath()
-	modelPath := a.cache.ModelPath()
-	modelName := web.Param(r, "model")
+func (a *app) missingModel(ctx context.Context, r *http.Request) web.Encoder {
+	return errs.New(errs.InvalidArgument, fmt.Errorf("model parameter is required"))
+}
 
-	mi, err := models.RetrieveInfo(libPath, modelPath, modelName)
+func (a *app) showModel(ctx context.Context, r *http.Request) web.Encoder {
+	modelID := web.Param(r, "model")
+
+	mi, err := a.models.RetrieveInfo(modelID)
 	if err != nil {
 		return errs.New(errs.Internal, err)
 	}
 
-	return toModelInfo(mi)
+	krn, err := a.cache.AquireModel(ctx, mi.ID)
+	if err != nil {
+		return errs.New(errs.Internal, err)
+	}
+
+	return toModelInfo(mi, krn.ModelInfo())
 }
 
 func (a *app) modelPS(ctx context.Context, r *http.Request) web.Encoder {
@@ -237,10 +237,9 @@ func (a *app) modelPS(ctx context.Context, r *http.Request) web.Encoder {
 }
 
 func (a *app) listCatalog(ctx context.Context, r *http.Request) web.Encoder {
-	basePath := defaults.BaseDir("")
 	filterCategory := web.Param(r, "filter")
 
-	list, err := catalog.CatalogModelList(basePath, filterCategory)
+	list, err := a.catalog.CatalogModelList(filterCategory)
 	if err != nil {
 		return errs.New(errs.Internal, err)
 	}
@@ -251,9 +250,7 @@ func (a *app) listCatalog(ctx context.Context, r *http.Request) web.Encoder {
 func (a *app) pullCatalog(ctx context.Context, r *http.Request) web.Encoder {
 	modelID := web.Param(r, "model")
 
-	basePath := defaults.BaseDir("")
-
-	model, err := catalog.RetrieveModelDetails(basePath, modelID)
+	model, err := a.catalog.RetrieveModelDetails(modelID)
 	if err != nil {
 		return errs.New(errs.Internal, err)
 	}
@@ -274,8 +271,6 @@ func (a *app) pullCatalog(ctx context.Context, r *http.Request) web.Encoder {
 
 	// -------------------------------------------------------------------------
 
-	modelPath := a.cache.ModelPath()
-
 	logger := func(ctx context.Context, msg string, args ...any) {
 		var sb strings.Builder
 		for i := 0; i < len(args); i += 2 {
@@ -292,7 +287,7 @@ func (a *app) pullCatalog(ctx context.Context, r *http.Request) web.Encoder {
 		f.Flush()
 	}
 
-	mp, err := models.Download(ctx, logger, model.Files.Model.URL, model.Files.Proj.URL, modelPath)
+	mp, err := a.models.Download(ctx, logger, model.Files.Model.URL, model.Files.Proj.URL)
 	if err != nil {
 		ver := toAppPull(err.Error(), models.Path{})
 
@@ -314,9 +309,8 @@ func (a *app) pullCatalog(ctx context.Context, r *http.Request) web.Encoder {
 
 func (a *app) showCatalogModel(ctx context.Context, r *http.Request) web.Encoder {
 	modelID := web.Param(r, "model")
-	basePath := defaults.BaseDir("")
 
-	model, err := catalog.RetrieveModelDetails(basePath, modelID)
+	model, err := a.catalog.RetrieveModelDetails(modelID)
 	if err != nil {
 		return errs.New(errs.Internal, err)
 	}
