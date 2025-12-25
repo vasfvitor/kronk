@@ -81,7 +81,12 @@ bui-upgrade-latest:
 # ==============================================================================
 # Kronk CLI
 
-kronk-server: bui-build
+kronk-build: kronk-docs bui-build
+
+kronk-docs:
+	go run cmd/server/api/tooling/docs/*.go
+
+kronk-server: kronk-build
 	go run cmd/kronk/main.go server start | go run cmd/server/api/tooling/logfmt/main.go
 
 kronk-server-detach: bui-build
@@ -287,7 +292,14 @@ owu-browse:
 # ==============================================================================
 # Tests
 
-test: install-libraries install-models
+lint:
+	CGO_ENABLED=0 go vet ./...
+	staticcheck -checks=all ./...
+
+vuln-check:
+	govulncheck ./...
+
+test-only: install-libraries install-models
 	@echo ========== RUN TESTS ==========
 	export GOROUTINES=1 && \
 	export RUN_IN_PARALLEL=1 && \
@@ -296,6 +308,8 @@ test: install-libraries install-models
 	CGO_ENABLED=0 go test -v -count=1 ./sdk/tools/... && \
 	CGO_ENABLED=0 go test -v -count=1 ./sdk/kronk/... && \
 	CGO_ENABLED=0 go test -v -count=1 ./cmd/server/app/sdk/...
+
+test: test-only lint vuln-check
 
 # ==============================================================================
 # Metrics and Tracing
@@ -325,7 +339,7 @@ statsviz:
 tidy:
 	go mod tidy
 
-deps-upgrade:
+deps-upgrade: bui-upgrade
 	go get -u -v ./...
 	go mod tidy
 
