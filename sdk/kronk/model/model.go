@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ardanlabs/kronk/sdk/observ/metrics"
+	"github.com/ardanlabs/kronk/sdk/kronk/observ/metrics"
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
 
@@ -55,6 +55,10 @@ func NewModel(tmlpRetriever TemplateRetriever, cfg Config) (*Model, error) {
 		mparams.SetDevices([]llama.GGMLBackendDevice{dev})
 	}
 
+	// -------------------------------------------------------------------------
+
+	l(context.Background(), "loading model from file", "status", "started")
+
 	// OTEL: WANT TO KNOW HOW LONG THESE FUNCTION CALLS TAKES
 	start := time.Now()
 
@@ -76,13 +80,14 @@ func NewModel(tmlpRetriever TemplateRetriever, cfg Config) (*Model, error) {
 
 	metrics.AddModelFileLoadTime(time.Since(start))
 
-	cfg = adjustConfig(cfg, mdl)
-	vocab := llama.ModelGetVocab(mdl)
+	l(context.Background(), "loading model from file", "status", "completed")
 
 	// -------------------------------------------------------------------------
 
-	modelInfo := toModelInfo(cfg, mdl)
+	cfg = adjustConfig(cfg, mdl)
+	vocab := llama.ModelGetVocab(mdl)
 
+	modelInfo := toModelInfo(cfg, mdl)
 	template, err := retrieveTemplate(tmlpRetriever, cfg, mdl, modelInfo)
 	if err != nil {
 		return nil, fmt.Errorf("new-model: failed to retrieve model template: %w", err)

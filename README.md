@@ -68,7 +68,9 @@ Here is the existing [FEATURES](FEATURES.md) list for the project. The features 
 
 ## Architecture
 
-The architecture of Kronk is designed to be simple and scalable. The Kronk API allows you to write applications that can diectly interact with local open source GGUF models (supported by llama.cpp) that provide inference for text and media (vision and audio).
+The architecture of Kronk is designed to be simple and scalable. The Kronk SDK allows you to write applications that can diectly interact with local open source GGUF models (supported by llama.cpp) that provide inference for text and media (vision and audio).
+
+![api arch](./images/design/sdk.png?v1)
 
 Check out the [examples](#examples) section below.
 
@@ -148,6 +150,12 @@ make example-question
 make example-vision
 ```
 
+[YZMA](examples/yzma/main.go) - This example shows you how to the yzma api at it's basic level.
+
+```shell
+make example-yzma
+```
+
 You can find more examples in the ArdanLabs AI training repo at [Example13](https://github.com/ardanlabs/ai-training/tree/main/cmd/examples/example13).
 
 ## Kronk Model Server
@@ -163,12 +171,15 @@ You will need to load a model if this is the first time you're using the system.
 ```shell
 kronk catalog list --local
 
-CATALOG              MODEL ID
-Audio-Text-to-Text   Qwen2-Audio-7B.Q8_0
-Embedding            embeddinggemma-300m-qat-Q8_0
-Image-Text-to-Text   Qwen2.5-VL-3B-Instruct-Q8_0
-Text-Generation      gpt-oss-20b-Q8_0
-Text-Generation      Qwen3-8B-Q8_0
+CATALOG              MODEL ID                            PULLED   ENDPOINT
+Audio-Text-to-Text   Qwen2-Audio-7B.Q8_0                 yes      chat_completion
+Embedding            embeddinggemma-300m-qat-Q8_0        yes      embeddings
+Image-Text-to-Text   gemma-3-4b-it-q4_0                  yes      chat_completion
+Image-Text-to-Text   Qwen2.5-VL-3B-Instruct-Q8_0         yes      chat_completion
+Text-Generation      gpt-oss-20b-Q8_0                    yes      chat_completion
+Text-Generation      Llama-3.3-70B-Instruct-Q8_0         yes      chat_completion
+Text-Generation      Qwen3-8B-Q8_0                       yes      chat_completion
+Text-Generation      Qwen3-Coder-30B-A3B-Instruct-Q8_0   yes      chat_completion
 ```
 
 Then download the `Qwen3-8B-Q8_0` model using the catalog pull command:
