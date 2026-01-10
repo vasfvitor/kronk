@@ -25,7 +25,6 @@ import (
 	"github.com/ardanlabs/kronk/cmd/server/app/sdk/security"
 	"github.com/ardanlabs/kronk/cmd/server/foundation/logger"
 	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/kronk/model"
 	"github.com/ardanlabs/kronk/sdk/kronk/observ/otel"
 	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
@@ -110,21 +109,12 @@ func run(ctx context.Context, log *logger.Logger, showHelp bool) error {
 		Templates struct {
 			GithubRepo string `conf:"default:https://api.github.com/repos/ardanlabs/kronk_catalogs/contents/templates"`
 		}
-		Model struct {
-			Device               string
-			MaxInstances         int           `conf:"default:1"`
-			MaxInCache           int           `conf:"default:3"`
-			ContextWindow        int           `conf:"default:23552"`
-			CacheTTL             time.Duration `conf:"default:5m"`
+		Cache struct {
+			ModelInstances       int           `conf:"default:1"`
+			ModelsInCache        int           `conf:"default:3"`
+			TTL                  time.Duration `conf:"default:5m"`
 			IgnoreIntegrityCheck bool          `conf:"default:true"`
-			NBatch               int
-			NUBatch              int
-			NThreads             int
-			NThreadsBatch        int
-			CacheTypeK           model.GGMLType
-			CacheTypeV           model.GGMLType
-			FlashAttention       model.FlashAttentionType
-			DefragThold          float32
+			ModelConfigFile      string
 		}
 		BasePath     string
 		LibPath      string
@@ -348,23 +338,11 @@ func run(ctx context.Context, log *logger.Logger, showHelp bool) error {
 		Log:                  log.Info,
 		BasePath:             cfg.BasePath,
 		Templates:            tmplts,
-		Arch:                 libs.Arch(),
-		OS:                   libs.OS(),
-		Processor:            libs.Processor(),
-		Device:               cfg.Model.Device,
-		ContextWindow:        cfg.Model.ContextWindow,
-		NBatch:               cfg.Model.NBatch,
-		NUBatch:              cfg.Model.NUBatch,
-		NThreads:             cfg.Model.NThreads,
-		NThreadsBatch:        cfg.Model.NThreadsBatch,
-		CacheTypeK:           cfg.Model.CacheTypeK,
-		CacheTypeV:           cfg.Model.CacheTypeV,
-		FlashAttention:       cfg.Model.FlashAttention,
-		DefragThold:          cfg.Model.DefragThold,
-		IgnoreIntegrityCheck: cfg.Model.IgnoreIntegrityCheck,
-		MaxInCache:           cfg.Model.MaxInCache,
-		ModelInstances:       cfg.Model.MaxInstances,
-		CacheTTL:             cfg.Model.CacheTTL,
+		ModelsInCache:        cfg.Cache.ModelsInCache,
+		ModelInstances:       cfg.Cache.ModelInstances,
+		CacheTTL:             cfg.Cache.TTL,
+		IgnoreIntegrityCheck: cfg.Cache.IgnoreIntegrityCheck,
+		ModelConfigFile:      cfg.Cache.ModelConfigFile,
 	})
 
 	if err != nil {

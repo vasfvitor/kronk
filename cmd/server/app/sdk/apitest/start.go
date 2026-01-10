@@ -16,7 +16,6 @@ import (
 	"github.com/ardanlabs/kronk/cmd/server/app/sdk/security/auth"
 	"github.com/ardanlabs/kronk/cmd/server/foundation/logger"
 	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/kronk/model"
 	"github.com/ardanlabs/kronk/sdk/kronk/observ/otel"
 	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
@@ -160,16 +159,9 @@ func New(t *testing.T, testName string) *Test {
 	cache, err := cache.NewCache(cache.Config{
 		Log:            log.Info,
 		Templates:      tmplts,
-		Arch:           libs.Arch(),
-		OS:             libs.OS(),
-		Processor:      libs.Processor(),
-		Device:         "",
-		MaxInCache:     3,
+		ModelsInCache:  3,
 		ModelInstances: 1,
-		ContextWindow:  0,
 		CacheTTL:       5 * time.Minute,
-		CacheTypeK:     model.GGMLTypeQ8_0,
-		CacheTypeV:     model.GGMLTypeQ8_0,
 	})
 
 	if err != nil {

@@ -80,24 +80,24 @@ func buildEnvVars(cmd *cobra.Command) []string {
 		envVars = append(envVars, "KRONK_AUTH_LOCAL_ENABLED="+strconv.FormatBool(v))
 	}
 
-	if v, _ := cmd.Flags().GetString("device"); v != "" {
-		envVars = append(envVars, "KRONK_MODEL_DEVICE="+v)
+	if v, _ := cmd.Flags().GetInt("model-instances"); v != 0 {
+		envVars = append(envVars, "KRONK_CACHE_MODEL_INSTANCES="+strconv.Itoa(v))
 	}
 
-	if v, _ := cmd.Flags().GetInt("max-instances"); v != 0 {
-		envVars = append(envVars, "KRONK_MODEL_MAX_INSTANCES="+strconv.Itoa(v))
-	}
-
-	if v, _ := cmd.Flags().GetInt("max-in-cache"); v != 0 {
-		envVars = append(envVars, "KRONK_MODEL_MAX_IN_CACHE="+strconv.Itoa(v))
-	}
-
-	if v, _ := cmd.Flags().GetInt("context-window"); v != 0 {
-		envVars = append(envVars, "KRONK_MODEL_CONTEXT_WINDOW="+strconv.Itoa(v))
+	if v, _ := cmd.Flags().GetInt("models-in-cache"); v != 0 {
+		envVars = append(envVars, "KRONK_CACHE_MODELS-IN-CACHE="+strconv.Itoa(v))
 	}
 
 	if v, _ := cmd.Flags().GetString("cache-ttl"); v != "" {
-		envVars = append(envVars, "KRONK_MODEL_CACHE_TTL="+v)
+		envVars = append(envVars, "KRONK_CACHE_TTL="+v)
+	}
+
+	if v, _ := cmd.Flags().GetBool("ignore-integrity-check"); v {
+		envVars = append(envVars, "KRONK_CACHE_IGNORE_INTEGRITY_CHECK=true")
+	}
+
+	if v, _ := cmd.Flags().GetString("model-config-file"); v != "" {
+		envVars = append(envVars, "KRONK_MODEL_CONFIG_FILE="+v)
 	}
 
 	if v, _ := cmd.Flags().GetInt("llama-log"); v != -1 {

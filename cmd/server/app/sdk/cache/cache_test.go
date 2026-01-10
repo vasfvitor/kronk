@@ -17,9 +17,17 @@ import (
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 )
 
-func Test_NewManager(t *testing.T) {
-	log := initKronk(t)
+var log model.Logger
 
+func Test_Cache(t *testing.T) {
+	log = initKronk(t)
+	t.Run("new-manager", newManager)
+	t.Run("acquire-model", acquireModel)
+	t.Run("shutdown", shutdown)
+	t.Run("eviction", eviction)
+}
+
+func newManager(t *testing.T) {
 	t.Run("default config values", func(t *testing.T) {
 		cfg := cache.Config{
 			Log: log,
@@ -35,7 +43,7 @@ func Test_NewManager(t *testing.T) {
 	t.Run("custom config values", func(t *testing.T) {
 		cfg := cache.Config{
 			Log:            log,
-			MaxInCache:     5,
+			ModelsInCache:  5,
 			ModelInstances: 2,
 			CacheTTL:       10 * time.Minute,
 		}
@@ -48,15 +56,14 @@ func Test_NewManager(t *testing.T) {
 	})
 }
 
-func Test_AcquireModel(t *testing.T) {
-	initKronk(t)
+func acquireModel(t *testing.T) {
 	log := logger.New(io.Discard, logger.LevelInfo, "test", nil)
 
 	modelID := findAvailableModel(t, "")
 
 	cfg := cache.Config{
 		Log:            log.Info,
-		MaxInCache:     3,
+		ModelsInCache:  3,
 		ModelInstances: 1,
 		CacheTTL:       5 * time.Minute,
 	}
@@ -104,9 +111,7 @@ func Test_AcquireModel(t *testing.T) {
 	})
 }
 
-func Test_Shutdown(t *testing.T) {
-	log := initKronk(t)
-
+func shutdown(t *testing.T) {
 	modelID := findAvailableModel(t, "")
 
 	t.Run("shutdown empty cache", func(t *testing.T) {
@@ -130,7 +135,7 @@ func Test_Shutdown(t *testing.T) {
 	t.Run("shutdown with loaded models", func(t *testing.T) {
 		cfg := cache.Config{
 			Log:            log,
-			MaxInCache:     3,
+			ModelsInCache:  3,
 			ModelInstances: 1,
 			CacheTTL:       5 * time.Minute,
 		}
@@ -159,7 +164,7 @@ func Test_Shutdown(t *testing.T) {
 	t.Run("shutdown timeout expires", func(t *testing.T) {
 		cfg := cache.Config{
 			Log:            log,
-			MaxInCache:     3,
+			ModelsInCache:  3,
 			ModelInstances: 1,
 			CacheTTL:       5 * time.Minute,
 		}
@@ -189,7 +194,7 @@ func Test_Shutdown(t *testing.T) {
 	t.Run("shutdown with cancelled context", func(t *testing.T) {
 		cfg := cache.Config{
 			Log:            log,
-			MaxInCache:     3,
+			ModelsInCache:  3,
 			ModelInstances: 1,
 			CacheTTL:       5 * time.Minute,
 		}
@@ -217,7 +222,7 @@ func Test_Shutdown(t *testing.T) {
 	t.Run("shutdown blocks until eviction completes", func(t *testing.T) {
 		cfg := cache.Config{
 			Log:            log,
-			MaxInCache:     3,
+			ModelsInCache:  3,
 			ModelInstances: 1,
 			CacheTTL:       5 * time.Minute,
 		}
@@ -259,16 +264,14 @@ func Test_Shutdown(t *testing.T) {
 	})
 }
 
-func Test_Eviction(t *testing.T) {
-	log := initKronk(t)
-
+func eviction(t *testing.T) {
 	modelID1 := findAvailableModel(t, "")
 	modelID2 := findAvailableModel(t, modelID1)
 
 	t.Run("eviction on TTL expiry", func(t *testing.T) {
 		cfg := cache.Config{
 			Log:            log,
-			MaxInCache:     3,
+			ModelsInCache:  3,
 			ModelInstances: 1,
 			CacheTTL:       500 * time.Millisecond,
 		}
@@ -302,7 +305,7 @@ func Test_Eviction(t *testing.T) {
 	t.Run("eviction on capacity exceeded", func(t *testing.T) {
 		cfg := cache.Config{
 			Log:            log,
-			MaxInCache:     1,
+			ModelsInCache:  1,
 			ModelInstances: 1,
 			CacheTTL:       5 * time.Minute,
 		}
