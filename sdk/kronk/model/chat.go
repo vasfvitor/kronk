@@ -23,6 +23,11 @@ func (m *Model) Chat(ctx context.Context, d D) (ChatResponse, error) {
 		lastMsg = msg
 	}
 
+	if len(lastMsg.Choice) > 0 {
+		lastMsg.Choice[0].Message = lastMsg.Choice[0].Delta
+		lastMsg.Choice[0].Delta = ResponseMessage{}
+	}
+
 	return lastMsg, nil
 }
 
@@ -34,7 +39,7 @@ func (m *Model) ChatStreaming(ctx context.Context, d D) <-chan ChatResponse {
 		m.activeStreams.Add(1)
 		defer m.activeStreams.Add(-1)
 
-		id := uuid.New().String()
+		id := fmt.Sprintf("chatcmpl-%s", uuid.New().String())
 
 		defer func() {
 			if rec := recover(); rec != nil {

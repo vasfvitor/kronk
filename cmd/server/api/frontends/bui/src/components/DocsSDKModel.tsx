@@ -74,7 +74,8 @@ export default function DocsSDKModel() {
               <pre className="code-block">
                 <code>{`type Choice struct {
 	Index        int             \`json:"index"\`
-	Delta        ResponseMessage \`json:"delta"\`
+	Message      ResponseMessage \`json:"message,omitempty"\`
+	Delta        ResponseMessage \`json:"delta,omitempty"\`
 	FinishReason string          \`json:"finish_reason"\`
 }`}</code>
               </pre>
@@ -134,9 +135,21 @@ export default function DocsSDKModel() {
 	Created int64       \`json:"created"\`
 	Model   string      \`json:"model"\`
 	Data    []EmbedData \`json:"data"\`
+	Usage   EmbedUsage  \`json:"usage"\`
 }`}</code>
               </pre>
               <p className="doc-description">EmbedReponse represents the output for an embedding call.</p>
+            </div>
+
+            <div className="doc-section" id="type-embedusage">
+              <h4>EmbedUsage</h4>
+              <pre className="code-block">
+                <code>{`type EmbedUsage struct {
+	PromptTokens int \`json:"prompt_tokens"\`
+	TotalTokens  int \`json:"total_tokens"\`
+}`}</code>
+              </pre>
+              <p className="doc-description">EmbedUsage provides token usage information for embeddings.</p>
             </div>
 
             <div className="doc-section" id="type-flashattentiontype">
@@ -208,9 +221,10 @@ export default function DocsSDKModel() {
 	RepeatLastN     int32   \`json:"repeat_last_n"\`
 	Thinking        string  \`json:"enable_thinking"\`
 	ReasoningEffort string  \`json:"reasoning_effort"\`
+	ReturnPrompt    bool    \`json:"return_prompt"\`
 }`}</code>
               </pre>
-              <p className="doc-description">Params represents the different options when using a model. The defaults are used when these values are set to 0. Temperature controls the randomness of the output. It rescales the probability distribution of possible next tokens. When set to 0, the default value is 0.7. TopK limits the pool of possible next tokens to the K number of most probable tokens. If a model predicts 10,000 possible next tokens, setting Top-K to 50 means only the 50 tokens with the highest probabilities are considered for selection (after temperature scaling). The rest are ignored. When set to 0, the default value is 40. TopP, also known as nucleus sampling, works differently than Top-K by selecting a dynamic pool of tokens whose cumulative probability exceeds a threshold P. Instead of a fixed number of tokens (K), it selects the minimum number of most probable tokens required to reach the cumulative probability P. When set to 0, the default value is 0.9. MinP, is a dynamic sampling threshold that helps balance the coherence (quality) and diversity (creativity) of the generated text. When set to 0, the default value is 0.0. These parameters (TopK, TopP, Temperature) are typically used together. The sampling process usually applies temperature first, then filters the token list using Top-K, and finally filters it again using Top-P before selecting the next token randomly from the remaining pool based on their (now adjusted) probabilities. MaxTokens defines the maximum number of output tokens to generate for a single response. When set to 0, the default value is 512. EnableThinking determines if the model should think or not. It is used for most non-GPT models. It accepts 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False. When set to an empty string, the default value is "true". ReasoningEffort is a string that specifies the level of reasoning effort to use for GPT models. RepeatPenalty applies a penalty to tokens that have already appeared in the output, reducing repetitive text. A value of 1.0 means no penalty. Values above 1.0 reduce repetition (e.g., 1.1 is a mild penalty, 1.5 is strong). When set to 0, the default value is 1.1. RepeatLastN specifies how many recent tokens to consider when applying the repetition penalty. A larger value considers more context but may be slower. When set to 0, the default value is 64.</p>
+              <p className="doc-description">Params represents the different options when using a model. The defaults are used when these values are set to 0. Temperature controls the randomness of the output. It rescales the probability distribution of possible next tokens. When set to 0, the default value is 0.7. TopK limits the pool of possible next tokens to the K number of most probable tokens. If a model predicts 10,000 possible next tokens, setting Top-K to 50 means only the 50 tokens with the highest probabilities are considered for selection (after temperature scaling). The rest are ignored. When set to 0, the default value is 40. TopP, also known as nucleus sampling, works differently than Top-K by selecting a dynamic pool of tokens whose cumulative probability exceeds a threshold P. Instead of a fixed number of tokens (K), it selects the minimum number of most probable tokens required to reach the cumulative probability P. When set to 0, the default value is 0.9. MinP, is a dynamic sampling threshold that helps balance the coherence (quality) and diversity (creativity) of the generated text. When set to 0, the default value is 0.0. These parameters (TopK, TopP, Temperature) are typically used together. The sampling process usually applies temperature first, then filters the token list using Top-K, and finally filters it again using Top-P before selecting the next token randomly from the remaining pool based on their (now adjusted) probabilities. MaxTokens defines the maximum number of output tokens to generate for a single response. When set to 0, the default value is 512. EnableThinking determines if the model should think or not. It is used for most non-GPT models. It accepts 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False. When set to an empty string, the default value is "true". ReasoningEffort is a string that specifies the level of reasoning effort to use for GPT models. RepeatPenalty applies a penalty to tokens that have already appeared in the output, reducing repetitive text. A value of 1.0 means no penalty. Values above 1.0 reduce repetition (e.g., 1.1 is a mild penalty, 1.5 is strong). When set to 0, the default value is 1.1. RepeatLastN specifies how many recent tokens to consider when applying the repetition penalty. A larger value considers more context but may be slower. When set to 0, the default value is 64. ReturnPrompt determines whether to include the prompt in the final response. When set to true, the prompt will be included. Default is false.</p>
             </div>
 
             <div className="doc-section" id="type-responsemessage">
@@ -230,12 +244,23 @@ export default function DocsSDKModel() {
               <h4>ResponseToolCall</h4>
               <pre className="code-block">
                 <code>{`type ResponseToolCall struct {
-	ID        string         \`json:"id"\`
-	Name      string         \`json:"name"\`
-	Arguments map[string]any \`json:"arguments"\`
-	Status    int            \`json:"status"\`
-	Raw       string         \`json:"raw"\`
-	Error     string         \`json:"error"\`
+	ID       string                   \`json:"id"\`
+	Index    int                      \`json:"index"\`
+	Type     string                   \`json:"type"\`
+	Function ResponseToolCallFunction \`json:"function"\`
+	Status   int                      \`json:"status,omitempty"\`
+	Raw      string                   \`json:"raw,omitempty"\`
+	Error    string                   \`json:"error,omitempty"\`
+}`}</code>
+              </pre>
+            </div>
+
+            <div className="doc-section" id="type-responsetoolcallfunction">
+              <h4>ResponseToolCallFunction</h4>
+              <pre className="code-block">
+                <code>{`type ResponseToolCallFunction struct {
+	Name      string            \`json:"name"\`
+	Arguments ToolCallArguments \`json:"arguments"\`
 }`}</code>
               </pre>
             </div>
@@ -259,6 +284,14 @@ export default function DocsSDKModel() {
 }`}</code>
               </pre>
               <p className="doc-description">TemplateRetriever returns a configured template for a model.</p>
+            </div>
+
+            <div className="doc-section" id="type-toolcallarguments">
+              <h4>ToolCallArguments</h4>
+              <pre className="code-block">
+                <code>{`type ToolCallArguments map[string]any`}</code>
+              </pre>
+              <p className="doc-description">ToolCallArguments represents tool call arguments that marshal to a JSON string per OpenAI API spec, but can unmarshal from either a string or object.</p>
             </div>
 
             <div className="doc-section" id="type-usage">
@@ -337,9 +370,9 @@ export default function DocsSDKModel() {
             <div className="doc-section" id="method-model-embeddings">
               <h4>Model.Embeddings</h4>
               <pre className="code-block">
-                <code>func (m *Model) Embeddings(ctx context.Context, input string) (EmbedReponse, error)</code>
+                <code>func (m *Model) Embeddings(ctx context.Context, d D) (EmbedReponse, error)</code>
               </pre>
-              <p className="doc-description">Embeddings performs an embedding request and returns the final response.</p>
+              <p className="doc-description">Embeddings performs an embedding request and returns the final response. Supported options in d: - input (string): the text to embed (required) - truncate (bool): if true, truncate input to fit context window (default: false) - truncate_direction (string): "right" (default) or "left"</p>
             </div>
 
             <div className="doc-section" id="method-model-modelinfo">
@@ -353,6 +386,20 @@ export default function DocsSDKModel() {
               <h4>Model.Unload</h4>
               <pre className="code-block">
                 <code>func (m *Model) Unload(ctx context.Context) error</code>
+              </pre>
+            </div>
+
+            <div className="doc-section" id="method-toolcallarguments-marshaljson">
+              <h4>ToolCallArguments.MarshalJSON</h4>
+              <pre className="code-block">
+                <code>func (a ToolCallArguments) MarshalJSON() ([]byte, error)</code>
+              </pre>
+            </div>
+
+            <div className="doc-section" id="method-toolcallarguments-unmarshaljson">
+              <h4>ToolCallArguments.UnmarshalJSON</h4>
+              <pre className="code-block">
+                <code>func (a *ToolCallArguments) UnmarshalJSON(data []byte) error</code>
               </pre>
             </div>
           </div>
@@ -461,6 +508,7 @@ export default function DocsSDKModel() {
                 <li><a href="#type-d">D</a></li>
                 <li><a href="#type-embeddata">EmbedData</a></li>
                 <li><a href="#type-embedreponse">EmbedReponse</a></li>
+                <li><a href="#type-embedusage">EmbedUsage</a></li>
                 <li><a href="#type-flashattentiontype">FlashAttentionType</a></li>
                 <li><a href="#type-ggmltype">GGMLType</a></li>
                 <li><a href="#type-logger">Logger</a></li>
@@ -469,8 +517,10 @@ export default function DocsSDKModel() {
                 <li><a href="#type-params">Params</a></li>
                 <li><a href="#type-responsemessage">ResponseMessage</a></li>
                 <li><a href="#type-responsetoolcall">ResponseToolCall</a></li>
+                <li><a href="#type-responsetoolcallfunction">ResponseToolCallFunction</a></li>
                 <li><a href="#type-template">Template</a></li>
                 <li><a href="#type-templateretriever">TemplateRetriever</a></li>
+                <li><a href="#type-toolcallarguments">ToolCallArguments</a></li>
                 <li><a href="#type-usage">Usage</a></li>
               </ul>
             </div>
@@ -487,6 +537,8 @@ export default function DocsSDKModel() {
                 <li><a href="#method-model-embeddings">Model.Embeddings</a></li>
                 <li><a href="#method-model-modelinfo">Model.ModelInfo</a></li>
                 <li><a href="#method-model-unload">Model.Unload</a></li>
+                <li><a href="#method-toolcallarguments-marshaljson">ToolCallArguments.MarshalJSON</a></li>
+                <li><a href="#method-toolcallarguments-unmarshaljson">ToolCallArguments.UnmarshalJSON</a></li>
               </ul>
             </div>
             <div className="doc-index-section">

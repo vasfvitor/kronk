@@ -218,6 +218,9 @@ func (m *Model) resetContext() {
 }
 
 func (m *Model) processChatRequest(ctx context.Context, id string, lctx llama.Context, mtmdCtx mtmd.Context, object string, prompt string, media [][]byte, params Params, ch chan<- ChatResponse) {
+	m.log(ctx, "process-chat-request", "status", "started", "id", id, "object", object)
+	defer m.log(ctx, "process-chat-request", "status", "completed", "id", id, "object", object)
+
 	ctx, span := otel.AddSpan(ctx, "process-chat-request",
 		attribute.String("id", id),
 		attribute.String("object", object),
@@ -255,6 +258,8 @@ func (m *Model) processChatRequest(ctx context.Context, id string, lctx llama.Co
 
 	// -------------------------------------------------------------------------
 
+	m.log(ctx, "process-chat-request", "status", "process input tokens")
+
 	// Start timing for time-to-first-token metric.
 	ttftStart := time.Now()
 
@@ -269,8 +274,13 @@ func (m *Model) processChatRequest(ctx context.Context, id string, lctx llama.Co
 
 	// Check that we have not exceeded the context window.
 	if inputTokens > m.cfg.ContextWindow {
+		returnPrompt := ""
+		if params.ReturnPrompt {
+			returnPrompt = prompt
+		}
+
 		err := fmt.Errorf("input tokens %d exceed context window %d", inputTokens, m.cfg.ContextWindow)
-		m.sendErrorResponse(ctx, ch, id, object, 1, prompt, err, Usage{
+		m.sendErrorResponse(ctx, ch, id, object, 1, returnPrompt, err, Usage{
 			PromptTokens:     inputTokens,
 			ReasoningTokens:  reasonTokens,
 			CompletionTokens: completionTokens,
@@ -281,6 +291,8 @@ func (m *Model) processChatRequest(ctx context.Context, id string, lctx llama.Co
 	}
 
 	// -------------------------------------------------------------------------
+
+	m.log(ctx, "process-chat-request", "status", "start processing loop")
 
 	// Capture the time we start processing the request for a wall clock.
 	start := time.Now()
@@ -341,7 +353,12 @@ loop:
 				break loop
 			}
 
-			m.sendErrorResponse(ctx, ch, id, object, index, prompt, err, Usage{
+			returnPrompt := ""
+			if params.ReturnPrompt {
+				returnPrompt = prompt
+			}
+
+			m.sendErrorResponse(ctx, ch, id, object, index, returnPrompt, err, Usage{
 				PromptTokens:     inputTokens,
 				ReasoningTokens:  reasonTokens,
 				CompletionTokens: completionTokens,
@@ -490,7 +507,12 @@ loop:
 
 	// Send the final response that contains eveything we have sent plus
 	// the final usage numbers.
-	m.sendFinalResponse(ctx, ch, id, object, index, prompt, &finalContent, &finalReasoning, respToolCalls,
+	returnPrompt := ""
+	if params.ReturnPrompt {
+		returnPrompt = prompt
+	}
+
+	m.sendFinalResponse(ctx, ch, id, object, index, returnPrompt, &finalContent, &finalReasoning, respToolCalls,
 		Usage{
 			PromptTokens:     inputTokens,
 			ReasoningTokens:  reasonTokens,

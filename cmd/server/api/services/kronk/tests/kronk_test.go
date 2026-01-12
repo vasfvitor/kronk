@@ -126,18 +126,38 @@ func readFile(file string) ([]byte, error) {
 // =============================================================================
 
 type responseValidator struct {
-	resp   *model.ChatResponse
-	errors []string
+	resp      *model.ChatResponse
+	streaming bool
+	errors    []string
 }
 
-func validateResponse(got any) responseValidator {
-	return responseValidator{resp: got.(*model.ChatResponse)}
+func validateResponse(got any, streaming bool) responseValidator {
+	return responseValidator{resp: got.(*model.ChatResponse), streaming: streaming}
+}
+
+func (v responseValidator) getMsg() model.ResponseMessage {
+	if v.streaming {
+		return v.resp.Choice[0].Delta
+	}
+	return v.resp.Choice[0].Message
 }
 
 func (v responseValidator) hasValidUUID() responseValidator {
-	if _, err := uuid.Parse(v.resp.ID); err != nil {
-		v.errors = append(v.errors, "expected id to be a UUID")
+	id := v.resp.ID
+
+	// Try parsing as-is first.
+	if _, err := uuid.Parse(id); err == nil {
+		return v
 	}
+
+	// Try extracting UUID from the last 36 characters (after prefix).
+	if len(id) >= 36 {
+		if _, err := uuid.Parse(id[len(id)-36:]); err == nil {
+			return v
+		}
+	}
+
+	v.errors = append(v.errors, "expected id to contain a valid UUID")
 
 	return v
 }
@@ -194,7 +214,7 @@ func (v responseValidator) hasContent() responseValidator {
 		return v
 	}
 
-	if v.resp.Choice[0].Delta.Content == "" {
+	if v.getMsg().Content == "" {
 		v.errors = append(v.errors, "expected content to be non-empty")
 	}
 
@@ -207,7 +227,7 @@ func (v responseValidator) hasReasoning() responseValidator {
 		return v
 	}
 
-	if v.resp.Choice[0].Delta.Reasoning == "" {
+	if v.getMsg().Reasoning == "" {
 		v.errors = append(v.errors, "expected reasoning to be non-empty")
 	}
 
@@ -219,7 +239,7 @@ func (v responseValidator) containsInContent(find string) responseValidator {
 		return v
 	}
 
-	if !strings.Contains(strings.ToLower(v.resp.Choice[0].Delta.Content), find) {
+	if !strings.Contains(strings.ToLower(v.getMsg().Content), find) {
 		v.errors = append(v.errors, fmt.Sprintf("expected to find %q in content", find))
 	}
 
@@ -231,7 +251,7 @@ func (v responseValidator) containsInReasoning(find string) responseValidator {
 		return v
 	}
 
-	if !strings.Contains(strings.ToLower(v.resp.Choice[0].Delta.Reasoning), find) {
+	if !strings.Contains(strings.ToLower(v.getMsg().Reasoning), find) {
 		v.errors = append(v.errors, fmt.Sprintf("expected to find %q in reasoning", find))
 	}
 

@@ -469,7 +469,7 @@ func (ss *streamState) handleToolCalls(toolCalls []model.ResponseToolCall) []Res
 				ss.outputIndex++
 			}
 
-			fcID := "fc_" + uuid.New().String()
+			fcID := fmt.Sprintf("call_%s", uuid.New().String())
 			ss.fcIDs = append(ss.fcIDs, fcID)
 			ss.fcArgsAccum = append(ss.fcArgsAccum, "")
 
@@ -477,7 +477,7 @@ func (ss *streamState) handleToolCalls(toolCalls []model.ResponseToolCall) []Res
 				Type:   "function_call",
 				ID:     fcID,
 				CallID: tc.ID,
-				Name:   tc.Name,
+				Name:   tc.Function.Name,
 				Status: "in_progress",
 			}
 			ss.fcItems = append(ss.fcItems, fcItem)
@@ -492,7 +492,7 @@ func (ss *streamState) handleToolCalls(toolCalls []model.ResponseToolCall) []Res
 			ss.seq++
 		}
 
-		args, _ := json.Marshal(tc.Arguments)
+		args, _ := json.Marshal(tc.Function.Arguments)
 		argsDelta := string(args)
 
 		ss.fcArgsAccum[idx] = argsDelta
@@ -599,10 +599,15 @@ func toChatResponseToResponses(chatResp model.ChatResponse, d model.D) ResponseR
 	var reasoning string
 
 	if len(chatResp.Choice) > 0 {
-		outputText = chatResp.Choice[0].Delta.Content
-		finishReason = chatResp.Choice[0].FinishReason
-		toolCalls = chatResp.Choice[0].Delta.ToolCalls
-		reasoning = chatResp.Choice[0].Delta.Reasoning
+		choice := chatResp.Choice[0]
+		msg := choice.Message
+		if msg.Content == "" && msg.Role == "" {
+			msg = choice.Delta
+		}
+		outputText = msg.Content
+		finishReason = choice.FinishReason
+		toolCalls = msg.ToolCalls
+		reasoning = msg.Reasoning
 	}
 
 	status := "completed"
@@ -681,13 +686,13 @@ func buildOutputItems(outputText string, toolCalls []model.ResponseToolCall, sta
 
 	if len(toolCalls) > 0 {
 		for _, tc := range toolCalls {
-			args, _ := json.Marshal(tc.Arguments)
+			args, _ := json.Marshal(tc.Function.Arguments)
 
 			outputItems = append(outputItems, ResponseOutputItem{
 				Type:      "function_call",
-				ID:        "fc_" + uuid.New().String(),
+				ID:        fmt.Sprintf("call_%s", uuid.New().String()),
 				CallID:    tc.ID,
-				Name:      tc.Name,
+				Name:      tc.Function.Name,
 				Arguments: string(args),
 				Status:    "completed",
 			})
