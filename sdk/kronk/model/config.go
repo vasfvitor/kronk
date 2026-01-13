@@ -120,6 +120,14 @@ type Logger func(ctx context.Context, msg string, args ...any)
 // NGpuLayers is the number of model layers to offload to the GPU. When set to 0,
 // all layers are offloaded (default). Set to -1 to keep all layers on CPU. Any
 // positive value specifies the exact number of layers to offload.
+//
+// SplitMode controls how the model is split across multiple GPUs:
+//   - SplitModeNone (0): single GPU
+//   - SplitModeLayer (1): split layers and KV across GPUs
+//   - SplitModeRow (2): split layers and KV across GPUs with tensor parallelism
+//     (recommended for MoE models like Qwen3-MoE, Mixtral, DeepSeek)
+//
+// When not set, defaults to SplitModeRow for optimal MoE performance.
 type Config struct {
 	Log                  Logger
 	ModelFiles           []string
@@ -139,7 +147,8 @@ type Config struct {
 	NSeqMax              int
 	OffloadKQV           *bool
 	OpOffload            *bool
-	NGpuLayers           int
+	NGpuLayers           *int32
+	SplitMode            SplitMode
 }
 
 func validateConfig(ctx context.Context, cfg Config, log Logger) error {
@@ -163,16 +172,6 @@ func validateConfig(ctx context.Context, cfg Config, log Logger) error {
 				return fmt.Errorf("validate-config: checking-model-integrity: %w", err)
 			}
 		}
-	}
-
-	// llama.cpp has a -1 default for loading all layers into the GPU
-	// However, we want to make it convenient to write the configuration.
-	// So, we default to invert these two values after loading them.
-	switch cfg.NGpuLayers {
-	case -1:
-		cfg.NGpuLayers = 0
-	case 0:
-		cfg.NGpuLayers = -1
 	}
 
 	return nil
@@ -329,59 +328,36 @@ const (
 	GGMLTypeBF16 GGMLType = 30 // Brain floating point 16-bit
 )
 
-// FlashAttentionType controls when to enable Flash Attention.
-// Flash Attention reduces memory usage and speeds up attention computation,
-// especially beneficial for large context windows.
-type FlashAttentionType int32
-
-const (
-	FlashAttentionEnabled  FlashAttentionType = 0 // Default: enable Flash Attention
-	FlashAttentionDisabled FlashAttentionType = 1 // Disable Flash Attention
-	FlashAttentionAuto     FlashAttentionType = 2 // Let llama.cpp decide
-)
-
-// UnmarshalYAML implements yaml.Unmarshaler to parse string values.
-func (t *FlashAttentionType) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "enabled", "on", "true", "1":
-		*t = FlashAttentionEnabled
-	case "disabled", "off", "false", "0":
-		*t = FlashAttentionDisabled
-	case "auto", "":
-		*t = FlashAttentionAuto
-	default:
-		return fmt.Errorf("unknown flash attention type: %s", s)
-	}
-
-	return nil
-}
-
 // String returns the string representation of a GGMLType.
 func (t GGMLType) String() string {
 	switch t {
 	case GGMLTypeF32:
 		return "f32"
+
 	case GGMLTypeF16:
 		return "f16"
+
 	case GGMLTypeQ4_0:
 		return "q4_0"
+
 	case GGMLTypeQ4_1:
 		return "q4_1"
+
 	case GGMLTypeQ5_0:
 		return "q5_0"
+
 	case GGMLTypeQ5_1:
 		return "q5_1"
+
 	case GGMLTypeQ8_0:
 		return "q8_0"
+
 	case GGMLTypeBF16:
 		return "bf16"
+
 	case GGMLTypeAuto:
 		return "auto"
+
 	default:
 		return fmt.Sprintf("unknown(%d)", t)
 	}
@@ -414,23 +390,145 @@ func ParseGGMLType(s string) (GGMLType, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "f32", "fp32":
 		return GGMLTypeF32, nil
+
 	case "f16", "fp16":
 		return GGMLTypeF16, nil
+
 	case "q4_0", "q4":
 		return GGMLTypeQ4_0, nil
+
 	case "q4_1":
 		return GGMLTypeQ4_1, nil
+
 	case "q5_0", "q5":
 		return GGMLTypeQ5_0, nil
+
 	case "q5_1":
 		return GGMLTypeQ5_1, nil
+
 	case "f8", "q8_0", "q8":
 		return GGMLTypeQ8_0, nil
+
 	case "bf16", "bfloat16":
 		return GGMLTypeBF16, nil
+
 	case "auto", "":
 		return GGMLTypeAuto, nil
+
 	default:
 		return GGMLTypeAuto, fmt.Errorf("unknown ggml type: %s", s)
+	}
+}
+
+// =============================================================================
+
+// FlashAttentionType controls when to enable Flash Attention.
+// Flash Attention reduces memory usage and speeds up attention computation,
+// especially beneficial for large context windows.
+type FlashAttentionType int32
+
+const (
+	FlashAttentionEnabled  FlashAttentionType = 0 // Default: enable Flash Attention
+	FlashAttentionDisabled FlashAttentionType = 1 // Disable Flash Attention
+	FlashAttentionAuto     FlashAttentionType = 2 // Let llama.cpp decide
+)
+
+// UnmarshalYAML implements yaml.Unmarshaler to parse string values.
+func (t *FlashAttentionType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "enabled", "on", "true", "1":
+		*t = FlashAttentionEnabled
+
+	case "disabled", "off", "false", "0":
+		*t = FlashAttentionDisabled
+
+	case "auto", "":
+		*t = FlashAttentionAuto
+
+	default:
+		return fmt.Errorf("unknown flash attention type: %s", s)
+	}
+
+	return nil
+}
+
+// =============================================================================
+
+// SplitMode controls how the model is split across multiple GPUs.
+// This is particularly important for Mixture of Experts (MoE) models.
+type SplitMode int32
+
+const (
+	// SplitModeNone uses a single GPU (default).
+	SplitModeNone SplitMode = 0
+
+	// SplitModeLayer splits layers and KV cache across GPUs.
+	SplitModeLayer SplitMode = 1
+
+	// SplitModeRow splits layers and KV across GPUs with tensor parallelism.
+	// This enables expert-parallel execution for MoE models (Qwen3-MoE, Mixtral, DeepSeek).
+	// Equivalent to vLLM's --enable-expert-parallel flag.
+	SplitModeRow SplitMode = 2
+)
+
+// String returns the string representation of a SplitMode.
+func (s SplitMode) String() string {
+	switch s {
+	case SplitModeNone:
+		return "none"
+
+	case SplitModeLayer:
+		return "layer"
+
+	case SplitModeRow:
+		return "row"
+
+	default:
+		return fmt.Sprintf("unknown(%d)", s)
+	}
+}
+
+// ToYZMAType converts to the yzma/llama.cpp SplitMode type.
+func (s SplitMode) ToYZMAType() llama.SplitMode {
+	return llama.SplitMode(s)
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler to parse string values.
+func (s *SplitMode) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var str string
+	if err := unmarshal(&str); err != nil {
+		return err
+	}
+
+	parsed, err := ParseSplitMode(str)
+	if err != nil {
+		return err
+	}
+
+	*s = parsed
+
+	return nil
+}
+
+// ParseSplitMode parses a string into a SplitMode.
+// Supported values: "none", "layer", "row", "expert-parallel", "tensor-parallel".
+func ParseSplitMode(s string) (SplitMode, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "none", "single", "0", "":
+		return SplitModeNone, nil
+
+	case "layer", "1":
+		return SplitModeLayer, nil
+
+	case "row", "tensor", "tensor-parallel", "expert-parallel", "2":
+		return SplitModeRow, nil
+
+	default:
+		return SplitModeNone, fmt.Errorf("unknown split mode: %s (valid: none, layer, row, expert-parallel)", s)
 	}
 }
