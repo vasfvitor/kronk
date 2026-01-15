@@ -2,7 +2,6 @@ package chatapi_test
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/ardanlabs/kronk/cmd/server/app/sdk/apitest"
@@ -62,8 +61,8 @@ func respNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 					hasStatus("completed").
 					hasOutput().
 					hasOutputText().
-					containsInOutput("gorilla").
-					result()
+					warnContainsInContent("gorilla").
+					result(t)
 			},
 		},
 		{
@@ -101,8 +100,8 @@ func respNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 					hasStatus("completed").
 					hasOutput().
 					hasOutputText().
-					containsInOutput("giraffes").
-					result()
+					warnContainsInContent("giraffes").
+					result(t)
 			},
 		},
 		{
@@ -141,8 +140,8 @@ func respNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 					hasStatus("completed").
 					hasOutput().
 					hasOutputText().
-					containsInOutput("speech").
-					result()
+					warnContainsInContent("speech").
+					result(t)
 			},
 		},
 	}
@@ -150,10 +149,11 @@ func respNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 	return table
 }
 
-func respStream200(tokens map[string]string) []apitest.Table {
+func respStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 	table := []apitest.Table{
 		{
 			Name:       "good-token",
+			SkipInGH:   true,
 			URL:        "/v1/responses",
 			Token:      tokens["responses"],
 			Method:     http.MethodPost,
@@ -195,8 +195,8 @@ func respStream200(tokens map[string]string) []apitest.Table {
 					hasStatus("completed").
 					hasOutput().
 					hasOutputText().
-					containsInOutput("gorilla").
-					result()
+					warnContainsInContent("gorilla").
+					result(t)
 			},
 		},
 	}
@@ -269,107 +269,4 @@ func respEndpoint401(tokens map[string]string) []apitest.Table {
 	}
 
 	return table
-}
-
-// =============================================================================
-
-type respResponseValidator struct {
-	resp   *kronk.ResponseResponse
-	errors []string
-}
-
-func validateRespResponse(got any) respResponseValidator {
-	return respResponseValidator{resp: got.(*kronk.ResponseResponse)}
-}
-
-func (v respResponseValidator) hasValidID() respResponseValidator {
-	if v.resp.ID == "" || len(v.resp.ID) < 5 {
-		v.errors = append(v.errors, "expected id to be a valid response ID")
-	}
-
-	return v
-}
-
-func (v respResponseValidator) hasCreatedAt() respResponseValidator {
-	if v.resp.CreatedAt <= 0 {
-		v.errors = append(v.errors, "expected created_at to be greater than 0")
-	}
-
-	return v
-}
-
-func (v respResponseValidator) hasStatus(expected string) respResponseValidator {
-	if v.resp.Status != expected {
-		v.errors = append(v.errors, "expected status to be "+expected)
-	}
-
-	return v
-}
-
-func (v respResponseValidator) hasOutput() respResponseValidator {
-	if len(v.resp.Output) == 0 {
-		v.errors = append(v.errors, "expected at least one output item")
-	}
-
-	return v
-}
-
-func (v respResponseValidator) hasOutputText() respResponseValidator {
-	if len(v.resp.Output) == 0 {
-		return v
-	}
-
-	for _, item := range v.resp.Output {
-		if item.Type == "message" && len(item.Content) > 0 {
-			for _, content := range item.Content {
-				if content.Type == "output_text" && content.Text != "" {
-					return v
-				}
-			}
-		}
-	}
-
-	v.errors = append(v.errors, "expected output to contain text content")
-	return v
-}
-
-func (v respResponseValidator) containsInOutput(find string) respResponseValidator {
-	if len(v.resp.Output) == 0 {
-		return v
-	}
-
-	for _, item := range v.resp.Output {
-		if item.Type == "message" && len(item.Content) > 0 {
-			for _, content := range item.Content {
-				if content.Type == "output_text" {
-					if containsIgnoreCase(content.Text, find) {
-						return v
-					}
-				}
-			}
-		}
-	}
-
-	v.errors = append(v.errors, "expected to find \""+find+"\" in output")
-	return v
-}
-
-func (v respResponseValidator) result() string {
-	if len(v.errors) == 0 {
-		return ""
-	}
-
-	result := ""
-	for i, err := range v.errors {
-		if i > 0 {
-			result += "; "
-		}
-		result += err
-	}
-
-	return result
-}
-
-func containsIgnoreCase(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

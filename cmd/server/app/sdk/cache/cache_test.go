@@ -13,6 +13,7 @@ import (
 	"github.com/ardanlabs/kronk/cmd/server/foundation/logger"
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 )
@@ -33,7 +34,7 @@ func newManager(t *testing.T) {
 			Log: log,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -48,7 +49,7 @@ func newManager(t *testing.T) {
 			CacheTTL:       10 * time.Minute,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -68,7 +69,7 @@ func acquireModel(t *testing.T) {
 		CacheTTL:       5 * time.Minute,
 	}
 
-	mgr, err := cache.NewCache(cfg)
+	mgr, err := cache.New(cfg)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -119,7 +120,7 @@ func shutdown(t *testing.T) {
 			Log: log,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -140,7 +141,7 @@ func shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -169,7 +170,7 @@ func shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -199,7 +200,7 @@ func shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -227,7 +228,7 @@ func shutdown(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -276,7 +277,7 @@ func eviction(t *testing.T) {
 			CacheTTL:       500 * time.Millisecond,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -310,7 +311,7 @@ func eviction(t *testing.T) {
 			CacheTTL:       5 * time.Minute,
 		}
 
-		mgr, err := cache.NewCache(cfg)
+		mgr, err := cache.New(cfg)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -339,7 +340,9 @@ func eviction(t *testing.T) {
 // =============================================================================
 
 func initKronk(t *testing.T) model.Logger {
-	libs, err := libs.New()
+	libs, err := libs.New(
+		libs.WithVersion(defaults.LibVersion("")),
+	)
 	if err != nil {
 		t.Fatalf("unable to create libs api: %s", err)
 	}

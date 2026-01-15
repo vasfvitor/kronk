@@ -11,6 +11,7 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/ardanlabs/kronk/sdk/tools/templates"
@@ -32,7 +33,7 @@ func runChat(cfg Config) error {
 		return fmt.Errorf("run: unable to install system: %w", err)
 	}
 
-	krn, err := newKronk(mp, cfg.Instances)
+	krn, err := newKronk(mp)
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
@@ -51,7 +52,9 @@ func installSystem(cfg Config) (models.Path, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 
-	lbs, err := libs.New()
+	lbs, err := libs.New(
+		libs.WithVersion(defaults.LibVersion("")),
+	)
 	if err != nil {
 		return models.Path{}, err
 	}
@@ -86,12 +89,12 @@ func installSystem(cfg Config) (models.Path, error) {
 	return mp, nil
 }
 
-func newKronk(mp models.Path, instances int) (*kronk.Kronk, error) {
+func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	if err := kronk.Init(); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krn, err := kronk.New(instances, model.Config{
+	krn, err := kronk.New(model.Config{
 		ModelFiles: mp.ModelFiles,
 	})
 

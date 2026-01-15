@@ -1,23 +1,16 @@
 ## ROADMAP
 
-### Automation
+### AUTOMATION
 
 - Look at what Llama.cpp vs Yzma vs Kronk and identify changes.
 
-### Yzma / LLama Mutli Request Support
+- New a github workflow for released: add support to Release to update Proxy server.
 
-Start from this example:
-https://github.com/ggml-org/llama.cpp/blob/537d4240d4f4dbd7f2eac1e3bf0452194fbb8e39/examples/parallel/parallel.cpp
+- Our own machine for running test.
 
-Generate 128 client requests (-ns 128), simulating 8 concurrent clients (-np 8). The system prompt is shared (-pps), meaning that it is computed once at the start. The client requests consist of up to 10 junk questions (--junk 10) followed by the actual question.
-llama-parallel -m model.gguf -np 8 -ns 128 --top-k 1 -pps --junk 10 -c 16384
+### PARALLEL INFERENCE RESEARCH & IMPLEMENTATION
 
-Speculative Decoding:
-https://github.com/ggml-org/llama.cpp/tree/537d4240d4f4dbd7f2eac1e3bf0452194fbb8e39/examples/speculative
-
-### BUGS / ISSUES
-
-- New a github workflow for released: add support to Release to update Proxy server
+- Multimode for Images (look before for details).
 
 ### SDK
 
@@ -63,6 +56,10 @@ https://github.com/ggml-org/llama.cpp/tree/537d4240d4f4dbd7f2eac1e3bf0452194fbb8
 
 - **`kronk push`** - Push custom models to a registry
 
+### SGLANG FEATURE PARITY
+
+https://medium.com/@aadishagrawal/sglang-how-a-secret-weapon-is-turbocharging-llm-inference-b9a7bd9ea43e
+
 ### TELEMETRY
 
 - Tokens/sec reported against a bucketed list of context sizes from the incoming requests
@@ -79,121 +76,66 @@ https://github.com/ggml-org/llama.cpp/tree/537d4240d4f4dbd7f2eac1e3bf0452194fbb8
     Allocated vs. free memory stats
     For detailed runtime memory monitoring, you'd need OS-level tools or Go's runtime.MemStats for system RAM.
 
----
+## BATCHING CHANGES
 
-### NEW WORK FOR BATCHING REQUESTS
+### Prefil Chunking
 
-## Thread Summary: Parallel Inference Research & Implementation
+GOING TO DO Option 1 later
 
-### LLM Inference Engine Comparison
+The issue is clear. In fillSlots() → startSlot(), when a new job is assigned to a slot, all prompt tokens are added to the batch in a single decode call (lines 280-284).
 
-**vLLM vs llama.cpp vs Ollama:**
+The batch was initialized with llama.BatchInit(int32(nCtx), 0, int32(nSlots)) at line 104, which uses the context size as the batch capacity. However, llama.cpp's llama_decode has a separate constraint: n_tokens_all <= cparams.n_batch (the NBatch config parameter, default 2048).
 
-| Engine        | Backend         | Key Features                                             | Best For                                   |
-| ------------- | --------------- | -------------------------------------------------------- | ------------------------------------------ |
-| **vLLM**      | Own Python/CUDA | PagedAttention, continuous batching, efficient scheduler | High-concurrency production serving        |
-| **llama.cpp** | C/C++           | Quantization (GGUF), CPU/GPU hybrid, portability         | Single-user, edge devices, low-concurrency |
-| **Ollama**    | Wraps llama.cpp | Easy CLI, model management, OpenAI-compatible API        | Developer convenience                      |
+Root cause: When nseq-max=2 with 2 concurrent requests, if both prompts are prefilled in the same batch iteration, the combined tokens can exceed NBatch (e.g., two 1500-token prompts = 3000 tokens > 2048).
 
-**Key Insight:** vLLM achieves up to 3x higher throughput at high concurrency due to PagedAttention and continuous batching. llama.cpp (and thus Ollama/kronk) does NOT support PagedAttention.
+Potential fixes:
 
-### What is PagedAttention?
+Chunk prefill - Add prompt tokens in chunks of NBatch / nSlots per iteration
+Sequential prefill - Only prefill one slot per batch iteration
+Check batch capacity - In startSlot, check remaining batch capacity before adding all tokens
+The simplest fix is to chunk the prefill or only start one new slot per iteration when prefill hasn't completed.
 
-PagedAttention is a memory management technique for LLM inference inspired by OS virtual memory paging:
+You are saying 1 is the simplest fix?
 
-- **Problem:** Traditional KV cache pre-allocates memory for max sequence length, wasting 60-80% of memory
-- **Solution:** Break KV cache into small fixed-size blocks (e.g., 16 tokens), allocate on-demand
-- **Benefits:**
-  - Reduces memory waste from 60-80% → ~4%
-  - Enables memory sharing across requests with common prefixes
-  - Up to 24x throughput improvement in benchmarks
+The user is asking if option 1 (chunked prefill) is the simplest fix. Let me reconsider.
 
-### Parallel Inference Implementation
+Actually, looking at this more carefully:
 
-Created two example programs demonstrating parallel inference with yzma/llama.cpp:
+Chunk prefill - Requires tracking prefill progress per slot, multiple iterations to complete prefill, more complex state management
+Sequential prefill - Simple: only call startSlot for one slot per fillSlots() iteration. Easy to implement.
+Check batch capacity - Still need a way to defer starting a slot if capacity insufficient
+Option 2 (sequential prefill) is actually simpler - just add a break or limit to only starting one slot per iteration. But this reduces parallelism during prefill.
 
-**Step 1: `examples/yzma-parallel/step1/main.go`**
+The truly correct fix is option 1 (chunked prefill) because it allows parallel prefill while respecting NBatch limits, but it's more complex.
 
-- Direct port of llama.cpp's parallel.cpp example
-- Simulates N clients with M total sequences
-- Uses continuous batching and shared system prompt
+Let me reconsider - the user asked if I'm saying option 1 is simplest. No, I said "simplest fix is to chunk the prefill OR only start one new slot per iteration." Option 2 is simpler to implement but option 1 is more correct for performance.
 
-**Step 2: `examples/yzma-parallel/step2/main.go`**
+No—option 2 (sequential prefill) is simpler to implement. Just add a break after startSlot in fillSlots():
 
-- Web server architecture with HTTP API
-- Request queue → Batch processor (single goroutine) → Response channels
-- Endpoints: `POST /v1/completions`, `GET /v1/stats`, `GET /health`
+case job := <-e.requestQ:
+e.startSlot(s, job, buf)
+return // Only start one slot per iteration
+This ensures only one prompt prefills at a time, avoiding the combined token overflow.
 
-**Architecture:**
+Option 1 (chunked prefill) is the correct long-term solution for parallel prefill throughput, but requires tracking per-slot prefill progress and splitting tokens across multiple decode iterations—more complex state management.
 
-```
-HTTP Handlers ──► Request Queue ──► Batch Processor ──► Response Channels
-    (many)          (chan 100)      (single goroutine)     (per request)
-                                           │
-                                    llama.Decode(batch)
-                                    (processes multiple
-                                     sequences in parallel)
-```
+### Multimode for Images
 
-### Key Concepts
+Good news: The yzma bindings DO support sequence IDs for multimodal!
 
-**n_parallel vs n_sequences:**
+func HelperEvalChunks(ctx Context, lctx llama.Context, chunks InputChunks,
+nPast llama.Pos, seqID llama.SeqId, ...) // <-- seqID parameter exists!
+The underlying llama.cpp API mtmd_helper_eval_chunks accepts a llama_seq_id parameter (line 82 comment shows this).
 
-- `n_parallel`: Max concurrent requests (KV cache slots) at any moment
-- `n_sequences`: Total requests to process (workload queue size)
+However, there's a mutex lock:
 
-**Batching independent requests:**
+muHelperEvalChunks.Lock()
+defer muHelperEvalChunks.Unlock()
+This means the Go bindings serialize all HelperEvalChunks calls—only one can run at a time. This is likely for thread safety but prevents true parallel vision inference at the Go level.
 
-- Requests do NOT need any commonality
-- Each gets its own sequence ID (KV cache slot)
-- Only optimization: shared system prompt can be computed once and copied
+Conclusion:
 
-**n_parallel constraints:**
-
-- **KV Cache Memory:** Each sequence needs `context_length × layers × head_dim` memory
-- **VRAM:** Rough estimate for 8B model: ~0.5 MB per token per sequence
-- **Practical limits:** Consumer GPU (8-12GB): 2-4 parallel; RTX 4090: 4-8; A100: 16-32+
-
-**n_predict:**
-
-- Default max tokens to generate per request (like OpenAI's `max_tokens`)
-- Prevents runaway generation
-
-### Bug Fix: hasPromptDone Flag
-
-Initial step2 implementation had a bug where `s.sampled` was added to batch before prompt decode completed. Fixed by adding `hasPromptDone` flag:
-
-```go
-type slot struct {
-    // ...
-    hasPromptDone bool // true after initial prompt decode
-}
-
-// Only add sampled token for slots that completed prompt decode
-for _, s := range bp.slots {
-    if !s.active || !s.hasPromptDone {
-        continue
-    }
-    batchAdd(&bp.batch, s.sampled, ...)
-}
-```
-
-### Running the Examples
-
-```bash
-# Step 1: Batch simulation
-make example-yzma-parallel-step1
-
-# Step 2: Web server
-make example-yzma-parallel-step2
-
-# Test with curl
-curl -X POST http://localhost:8090/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello", "max_tokens": 50}'
-
-# Concurrent load test
-seq 1 10 | xargs -P 10 -I {} curl -s -X POST http://localhost:8090/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Request {}", "max_tokens": 30}'
-```
+llama.cpp's mtmd does support sequence IDs for parallel inference
+yzma's Go bindings serialize calls with a mutex (limiting parallelism)
+To enable parallel vision, the mutex would need to be removed or the binding reworked
+The current validation check is appropriate. Parallel vision would require changes to yzma.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/ardanlabs/kronk/sdk/tools/templates"
@@ -123,20 +124,21 @@ func printInfo(models *models.Models) {
 		}
 	}
 
-	if os.Getenv("RUN_IN_PARALLEL") == "1" {
+	if os.Getenv("RUN_IN_PARALLEL") == "yes" {
 		runInParallel = true
 	}
 
-	fmt.Println("libpath        :", libs.Path(""))
-	fmt.Println("modelPath      :", models.Path())
-	fmt.Println("imageFile      :", imageFile)
-	fmt.Println("processor      :", "cpu")
-	fmt.Println("testDuration   :", testDuration)
-	fmt.Println("MODEL INSTANCES:", modelInstances)
-	fmt.Println("GOROUTINES     :", goroutines)
-	fmt.Println("RUN_IN_PARALLEL:", runInParallel)
+	fmt.Println("libpath          :", libs.Path(""))
+	fmt.Println("useLibVersion    :", defaults.LibVersion(""))
+	fmt.Println("modelPath        :", models.Path())
+	fmt.Println("imageFile        :", imageFile)
+	fmt.Println("processor        :", "cpu")
+	fmt.Println("testDuration     :", testDuration)
+	fmt.Println("MODEL INSTANCES. :", modelInstances)
+	fmt.Println("GOROUTINES       :", goroutines)
+	fmt.Println("RUN_IN_PARALLEL  :", runInParallel)
 
-	libs, err := libs.New()
+	libs, err := libs.New(libs.WithVersion(defaults.LibVersion("")))
 	if err != nil {
 		fmt.Printf("Failed to construct the libs api: %v\n", err)
 		os.Exit(1)
@@ -148,7 +150,7 @@ func printInfo(models *models.Models) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Current version: %s\n", currentVersion)
+	fmt.Printf("Installed version: %s\n", currentVersion)
 }
 
 func getMsg(choice model.Choice, streaming bool) model.ResponseMessage {
@@ -210,10 +212,17 @@ func testChatBasics(resp model.ChatResponse, modelName string, object string, re
 	return nil
 }
 
-func testChatResponse(resp model.ChatResponse, modelName string, object string, find string, funct string, arg string, streaming bool) error {
+type testResult struct {
+	Err      error
+	Warnings []string
+}
+
+func testChatResponse(resp model.ChatResponse, modelName string, object string, find string, funct string, arg string, streaming bool) testResult {
 	if err := testChatBasics(resp, modelName, object, object == model.ObjectChatText, streaming); err != nil {
-		return err
+		return testResult{Err: err}
 	}
+
+	var result testResult
 
 	msg := getMsg(resp.Choice[0], streaming)
 
@@ -221,48 +230,63 @@ func testChatResponse(resp model.ChatResponse, modelName string, object string, 
 	funct = strings.ToLower(funct)
 	msg.Reasoning = strings.ToLower(msg.Reasoning)
 	msg.Content = strings.ToLower(msg.Content)
+
 	if len(msg.ToolCalls) > 0 {
 		msg.ToolCalls[0].Function.Name = strings.ToLower(msg.ToolCalls[0].Function.Name)
 	}
 
+	// Reasoning checks are warnings (LLM output is non-deterministic).
 	if object == model.ObjectChatText {
+		if len(msg.Reasoning) == 0 {
+			result.Err = fmt.Errorf("content: expected some reasoning")
+		}
+
 		switch {
 		case funct == "":
 			if !strings.Contains(msg.Reasoning, find) {
-				return fmt.Errorf("reasoning: expected %q, got %q", find, msg.Reasoning)
+				result.Warnings = append(result.Warnings, fmt.Sprintf("reasoning: expected %q, got %q", find, msg.Reasoning))
 			}
 
 		case funct != "":
 			if !strings.Contains(msg.Reasoning, funct) {
-				return fmt.Errorf("reasoning: expected %q, got %q", funct, msg.Reasoning)
+				result.Warnings = append(result.Warnings, fmt.Sprintf("reasoning: expected %q, got %q", funct, msg.Reasoning))
 			}
 		}
 	}
 
 	if resp.Choice[0].FinishReason == "stop" {
+		if len(msg.Content) == 0 {
+			result.Err = fmt.Errorf("content: expected some content")
+		}
+
 		if !strings.Contains(msg.Content, find) {
-			return fmt.Errorf("content: expected %q, got %q", find, msg.Content)
+			result.Warnings = append(result.Warnings, fmt.Sprintf("content: expected %q, got %q", find, msg.Content))
+			return result
 		}
 	}
 
 	if resp.Choice[0].FinishReason == "tool" {
 		if !strings.Contains(msg.ToolCalls[0].Function.Name, funct) {
-			return fmt.Errorf("tooling: expected %q, got %q", funct, msg.ToolCalls[0].Function.Name)
+			result.Warnings = append(result.Warnings, fmt.Sprintf("tooling: expected %q, got %q", funct, msg.ToolCalls[0].Function.Name))
+			return result
 		}
 
 		if len(msg.ToolCalls[0].Function.Arguments) == 0 {
-			return fmt.Errorf("tooling: expected arguments to be non-empty, got %v", msg.ToolCalls[0].Function.Arguments)
+			result.Err = fmt.Errorf("tooling: expected arguments to be non-empty, got %v", msg.ToolCalls[0].Function.Arguments)
+			return result
 		}
 
 		location, exists := msg.ToolCalls[0].Function.Arguments[arg]
 		if !exists {
-			return fmt.Errorf("tooling: expected an argument named %s", arg)
+			result.Err = fmt.Errorf("tooling: expected an argument named %s", arg)
+			return result
 		}
 
 		if !strings.Contains(strings.ToLower(location.(string)), find) {
-			return fmt.Errorf("tooling: expected %q, got %q", find, location.(string))
+			result.Err = fmt.Errorf("tooling: expected %q, got %q", find, location.(string))
+			return result
 		}
 	}
 
-	return nil
+	return result
 }

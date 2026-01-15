@@ -28,22 +28,25 @@ func (m *Model) Chat(ctx context.Context, d D) (ChatResponse, error) {
 
 // ChatStreaming performs a chat request and streams the response.
 func (m *Model) ChatStreaming(ctx context.Context, d D) <-chan ChatResponse {
-	ch := make(chan ChatResponse)
+	ch := make(chan ChatResponse, 1)
 
 	go func() {
 		m.activeStreams.Add(1)
-		defer m.activeStreams.Add(-1)
 
 		id := fmt.Sprintf("chatcmpl-%s", uuid.New().String())
+
+		batching := false
 
 		defer func() {
 			if rec := recover(); rec != nil {
 				m.sendChatError(ctx, ch, id, fmt.Errorf("%v", rec))
 			}
-			close(ch)
-		}()
 
-		defer m.resetContext()
+			if !batching {
+				close(ch)
+				m.activeStreams.Add(-1)
+			}
+		}()
 
 		params, err := m.validateDocument(d)
 		if err != nil {
@@ -56,30 +59,70 @@ func (m *Model) ChatStreaming(ctx context.Context, d D) <-chan ChatResponse {
 			m.sendChatError(ctx, ch, id, err)
 			return
 		}
-		if mtmdCtx != 0 {
-			defer mtmd.Free(mtmdCtx)
-		}
+
+		defer func() {
+			if !batching {
+				if mtmdCtx != 0 {
+					mtmd.Free(mtmdCtx)
+				}
+
+				m.resetContext()
+			}
+		}()
 
 		prompt, media, err := m.createPrompt(ctx, d)
 		if err != nil {
-			m.sendChatError(ctx, ch, id, fmt.Errorf("create-prompt: unable to apply jinja template: %w", err))
+			m.sendChatError(ctx, ch, id, fmt.Errorf("create-streaming: unable to apply jinja template: %w", err))
 			return
 		}
 
-		m.processChatRequest(ctx, id, m.lctx, mtmdCtx, object, prompt, media, params, ch)
+		// ---------------------------------------------------------------------
+
+		// Use batch engine for text-only requests when available.
+		if m.batch != nil && object == ObjectChatText {
+			job := chatJob{
+				id:      id,
+				ctx:     ctx,
+				d:       d,
+				object:  object,
+				prompt:  prompt,
+				media:   media,
+				params:  params,
+				mtmdCtx: mtmdCtx,
+				ch:      ch,
+			}
+
+			// Engine manages activeStreams for submitted jobs.
+			if err := m.batch.submit(&job); err != nil {
+				m.sendChatError(ctx, ch, id, err)
+				return
+			}
+
+			batching = true
+
+			// Channel closed and activeStreams decremented by
+			// engine when job completes.
+			return
+		}
+
+		// ---------------------------------------------------------------------
+
+		// Sequential path for media requests or when engine is not available.
+
+		m.sequentialChatRequest(ctx, id, m.lctx, mtmdCtx, object, prompt, media, params, ch)
 	}()
 
 	return ch
 }
 
 func (m *Model) prepareMediaContext(ctx context.Context, d D) (D, string, mtmd.Context, error) {
-	hasMedia, isOpenAIFormat, msgs, err := detectMediaContent(d)
+	mediaType, isOpenAIFormat, msgs, err := detectMediaContent(d)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf("detect-media: %w", err)
+		return nil, "", 0, fmt.Errorf("prepare-media-context: %w", err)
 	}
 
-	if hasMedia && m.projFile == "" {
-		return nil, "", 0, fmt.Errorf("media detected in request but model does not support media processing")
+	if mediaType != MediaTypeNone && m.projFile == "" {
+		return nil, "", 0, fmt.Errorf("prepare-media-context: media detected in request but model does not support media processing")
 	}
 
 	var mtmdCtx mtmd.Context
@@ -90,7 +133,21 @@ func (m *Model) prepareMediaContext(ctx context.Context, d D) (D, string, mtmd.C
 
 		mtmdCtx, err = m.loadProjFile(ctx)
 		if err != nil {
-			return nil, "", 0, fmt.Errorf("init-from-file: unable to init projection: %w", err)
+			return nil, "", 0, fmt.Errorf("prepare-media-context: unable to init projection: %w", err)
+		}
+
+		switch mediaType {
+		case MediaTypeVision:
+			if !mtmd.SupportVision(mtmdCtx) {
+				mtmd.Free(mtmdCtx)
+				return nil, "", 0, fmt.Errorf("prepare-media-context: image/video detected but model does not support vision")
+			}
+
+		case MediaTypeAudio:
+			if !mtmd.SupportAudio(mtmdCtx) {
+				mtmd.Free(mtmdCtx)
+				return nil, "", 0, fmt.Errorf("prepare-media-context: audio detected but model does not support audio")
+			}
 		}
 	}
 
@@ -98,10 +155,10 @@ func (m *Model) prepareMediaContext(ctx context.Context, d D) (D, string, mtmd.C
 	case isOpenAIFormat:
 		d, err = convertToRawMediaMessage(d.Clone(), msgs)
 		if err != nil {
-			return nil, "", 0, fmt.Errorf("convert-media-message: unable to convert document to media message: %w", err)
+			return nil, "", 0, fmt.Errorf("prepare-media-context: unable to convert document to media message: %w", err)
 		}
 
-	case hasMedia:
+	case mediaType != MediaTypeNone:
 		d = convertPlainBase64ToBytes(d)
 	}
 
@@ -111,8 +168,8 @@ func (m *Model) prepareMediaContext(ctx context.Context, d D) (D, string, mtmd.C
 func (m *Model) loadProjFile(ctx context.Context) (mtmd.Context, error) {
 	baseProjFile := path.Base(m.projFile)
 
-	m.log(context.Background(), "loading prof file", "status", "started", "proj", baseProjFile)
-	defer m.log(context.Background(), "loading prof file", "status", "completed", "proj", baseProjFile)
+	m.log(context.Background(), "loading-prof-file", "status", "started", "proj", baseProjFile)
+	defer m.log(context.Background(), "loading-prof-file", "status", "completed", "proj", baseProjFile)
 
 	_, span := otel.AddSpan(ctx, "proj-file-load-time",
 		attribute.String("proj-file", baseProjFile),
@@ -152,11 +209,11 @@ func (m *Model) createPrompt(ctx context.Context, d D) (string, [][]byte, error)
 func (m *Model) validateDocument(d D) (Params, error) {
 	messages, exists := d["messages"]
 	if !exists {
-		return Params{}, errors.New("no messages found in request")
+		return Params{}, errors.New("validate-document: no messages found in request")
 	}
 
 	if _, ok := messages.([]D); !ok {
-		return Params{}, errors.New("messages is not a slice of documents")
+		return Params{}, errors.New("validate-document: messages is not a slice of documents")
 	}
 
 	params, err := m.parseParams(d)

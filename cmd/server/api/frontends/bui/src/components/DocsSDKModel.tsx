@@ -188,6 +188,13 @@ export default function DocsSDKModel() {
               <p className="doc-description">Logger provides a function for logging messages from different APIs.</p>
             </div>
 
+            <div className="doc-section" id="type-mediatype">
+              <h4>MediaType</h4>
+              <pre className="code-block">
+                <code>{`type MediaType int`}</code>
+              </pre>
+            </div>
+
             <div className="doc-section" id="type-model">
               <h4>Model</h4>
               <pre className="code-block">
@@ -408,7 +415,7 @@ export default function DocsSDKModel() {
               <pre className="code-block">
                 <code>func (m *Model) Embeddings(ctx context.Context, d D) (EmbedReponse, error)</code>
               </pre>
-              <p className="doc-description">Embeddings performs an embedding request and returns the final response. Supported options in d: - input (string): the text to embed (required) - truncate (bool): if true, truncate input to fit context window (default: false) - truncate_direction (string): "right" (default) or "left" - dimensions (int): reduce output to first N dimensions (for Matryoshka models)</p>
+              <p className="doc-description">Embeddings performs batch embedding for multiple inputs in a single forward pass. This is more efficient than calling Embeddings multiple times. Supported options in d: - input ([]string): the texts to embed (required) - truncate (bool): if true, truncate inputs to fit context window (default: false) - truncate_direction (string): "right" (default) or "left" - dimensions (int): reduce output to first N dimensions (for Matryoshka models)</p>
             </div>
 
             <div className="doc-section" id="method-model-modelinfo">
@@ -573,6 +580,7 @@ export default function DocsSDKModel() {
                 <li><a href="#type-flashattentiontype">FlashAttentionType</a></li>
                 <li><a href="#type-ggmltype">GGMLType</a></li>
                 <li><a href="#type-logger">Logger</a></li>
+                <li><a href="#type-mediatype">MediaType</a></li>
                 <li><a href="#type-model">Model</a></li>
                 <li><a href="#type-modelinfo">ModelInfo</a></li>
                 <li><a href="#type-params">Params</a></li>

@@ -21,17 +21,9 @@ export default function DocsSDKKronk() {
             <div className="doc-section" id="func-init">
               <h4>Init</h4>
               <pre className="code-block">
-                <code>func Init() error</code>
+                <code>func Init(opts ...InitOption) error</code>
               </pre>
-              <p className="doc-description">Init initializes the Kronk backend suport.</p>
-            </div>
-
-            <div className="doc-section" id="func-initwithsettings">
-              <h4>InitWithSettings</h4>
-              <pre className="code-block">
-                <code>func InitWithSettings(libPath string, logLevel LogLevel) error</code>
-              </pre>
-              <p className="doc-description">InitWithSettings initializes the Kronk backend suport.</p>
+              <p className="doc-description">Init initializes the Kronk backend support.</p>
             </div>
 
             <div className="doc-section" id="func-setfmtloggertraceid">
@@ -45,9 +37,9 @@ export default function DocsSDKKronk() {
             <div className="doc-section" id="func-new">
               <h4>New</h4>
               <pre className="code-block">
-                <code>func New(modelInstances int, cfg model.Config, opts ...Option) (*Kronk, error)</code>
+                <code>func New(cfg model.Config, opts ...Option) (*Kronk, error)</code>
               </pre>
-              <p className="doc-description">New provides the ability to use models in a concurrently safe way. modelInstances represents the number of instances of the model to create. Unless you have more than 1 GPU, the recommended number of instances is 1.</p>
+              <p className="doc-description">New provides the ability to use models in a concurrently safe way. The cfg.NSeqMax field controls how many concurrent requests can be processed in parallel. When NSeqMax &gt; 1, the batch engine is used for parallel inference.</p>
             </div>
           </div>
 
@@ -62,6 +54,14 @@ export default function DocsSDKKronk() {
 }`}</code>
               </pre>
               <p className="doc-description">IncompleteDetail provides details about why a response is incomplete.</p>
+            </div>
+
+            <div className="doc-section" id="type-initoption">
+              <h4>InitOption</h4>
+              <pre className="code-block">
+                <code>{`type InitOption func(*initOptions)`}</code>
+              </pre>
+              <p className="doc-description">InitOption represents options for configuring Init.</p>
             </div>
 
             <div className="doc-section" id="type-inputtokensdetails">
@@ -362,7 +362,7 @@ export default function DocsSDKKronk() {
               <pre className="code-block">
                 <code>func (krn *Kronk) Unload(ctx context.Context) error</code>
               </pre>
-              <p className="doc-description">Unload will close down all loaded models. You should call this only when you are completely done using the group.</p>
+              <p className="doc-description">Unload will close down the loaded model. You should call this only when you are completely done using Kronk.</p>
             </div>
 
             <div className="doc-section" id="method-loglevel-int">
@@ -380,7 +380,7 @@ export default function DocsSDKKronk() {
             <div className="doc-section" id="const-version">
               <h4>Version</h4>
               <pre className="code-block">
-                <code>{`const Version = "1.12.8"`}</code>
+                <code>{`const Version = "1.13.0"`}</code>
               </pre>
               <p className="doc-description">Version contains the current version of the kronk package.</p>
             </div>
@@ -429,7 +429,6 @@ export default function DocsSDKKronk() {
               <a href="#functions" className="doc-index-header">Functions</a>
               <ul>
                 <li><a href="#func-init">Init</a></li>
-                <li><a href="#func-initwithsettings">InitWithSettings</a></li>
                 <li><a href="#func-setfmtloggertraceid">SetFmtLoggerTraceID</a></li>
                 <li><a href="#func-new">New</a></li>
               </ul>
@@ -438,6 +437,7 @@ export default function DocsSDKKronk() {
               <a href="#types" className="doc-index-header">Types</a>
               <ul>
                 <li><a href="#type-incompletedetail">IncompleteDetail</a></li>
+                <li><a href="#type-initoption">InitOption</a></li>
                 <li><a href="#type-inputtokensdetails">InputTokensDetails</a></li>
                 <li><a href="#type-kronk">Kronk</a></li>
                 <li><a href="#type-loglevel">LogLevel</a></li>

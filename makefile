@@ -101,10 +101,10 @@ vuln-check:
 # Don't change the order of these tests. This order is solving a test
 # build issue with time it takes to build the test binary due to building
 # the binary with the libraries.
-test-only: install-libraries install-models
+test-only: install-models
 	@echo ========== RUN TESTS ==========
 	export GOROUTINES=1 && \
-	export RUN_IN_PARALLEL=1 && \
+	export RUN_IN_PARALLEL=yes && \
 	export GITHUB_WORKSPACE=$(shell pwd) && \
 	CGO_ENABLED=0 go test -v -count=1 ./cmd/server/api/services/kronk/tests && \
 	CGO_ENABLED=0 go test -v -count=1 ./sdk/kronk/tests && \
@@ -306,6 +306,23 @@ curl-kronk-chat:
 			} \
 		] \
     }'
+
+curl-kronk-chat-load:
+	for i in {1..3}; do \
+		curl -i -X POST http://localhost:8080/v1/chat/completions \
+		-H "Authorization: Bearer ${KRONK_TOKEN}" \
+		-H "Content-Type: application/json" \
+		-d '{ \
+			"model": "gpt-oss-20b-Q8_0", \
+			"stream": true, \
+			"messages": [ \
+				{ \
+					"role": "user", \
+					"content": "Hello model" \
+				} \
+			] \
+		}' & \
+	done; wait
 
 FILE_GIRAFFE := $(shell base64 < examples/samples/giraffe.jpg)
 
@@ -595,3 +612,13 @@ example-yzma-parallel-load:
 		-H "Content-Type: application/json" \
 		-d "{\"prompt\": \"Request $$i: Hello\", \"max_tokens\": 30}" & \
 	done; wait
+
+# ==============================================================================
+# yzma-multimodal example
+
+VISION_MODEL ?= /Users/bill/.kronk/models/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/Qwen2.5-VL-3B-Instruct-Q8_0.gguf
+VISION_PROJ ?= /Users/bill/.kronk/models/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf
+VISION_IMAGE ?= examples/samples/giraffe.jpg
+
+example-yzma-multimodal-step1:
+	CGO_ENABLED=0 go run examples/yzma-multimodal/step1/main.go -model $(VISION_MODEL) -proj $(VISION_PROJ) -image $(VISION_IMAGE)

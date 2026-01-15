@@ -31,10 +31,13 @@ type Model struct {
 	vocab         llama.Vocab
 	ctxParams     llama.ContextParams
 	lctx          llama.Context
+	mem           llama.Memory
+	batch         *batchEngine
 	template      Template
 	projFile      string
 	modelInfo     ModelInfo
 	activeStreams atomic.Int32
+	unloaded      atomic.Bool
 }
 
 func NewModel(ctx context.Context, tmplRetriever TemplateRetriever, cfg Config) (*Model, error) {
@@ -107,10 +110,19 @@ func NewModel(ctx context.Context, tmplRetriever TemplateRetriever, cfg Config) 
 
 	ctxParams := modelCtxParams(cfg, modelInfo)
 
+	l(ctx, "context-params", "NCtx", ctxParams.NCtx, "NBatch", ctxParams.NBatch, "NUBatch", ctxParams.NUbatch, "NSeqMax", ctxParams.NSeqMax, "TypeK", ctxParams.TypeK, "TypeV", ctxParams.TypeV, "NThreads", ctxParams.NThreads, "NThreadsBatch", ctxParams.NThreadsBatch)
+
 	lctx, err := llama.InitFromModel(mdl, ctxParams)
 	if err != nil {
 		llama.ModelFree(mdl)
 		return nil, fmt.Errorf("init-from-model: unable to init context: %w", err)
+	}
+
+	mem, err := llama.GetMemory(lctx)
+	if err != nil {
+		llama.Free(lctx)
+		llama.ModelFree(mdl)
+		return nil, fmt.Errorf("get-memory: unable to get memory: %w", err)
 	}
 
 	m := Model{
@@ -120,9 +132,18 @@ func NewModel(ctx context.Context, tmplRetriever TemplateRetriever, cfg Config) 
 		vocab:     llama.ModelGetVocab(mdl),
 		ctxParams: ctxParams,
 		lctx:      lctx,
+		mem:       mem,
 		template:  template,
 		projFile:  cfg.ProjFile,
 		modelInfo: modelInfo,
+	}
+
+	// Initialize batch engine for text-only models (no ProjFile).
+	// Batching is faster even for single-sequence inference.
+	if cfg.ProjFile == "" {
+		nSlots := max(cfg.NSeqMax, 1)
+		m.batch = newBatchEngine(&m, nSlots)
+		m.batch.start(ctx)
 	}
 
 	return &m, nil
@@ -200,10 +221,20 @@ func retrieveTemplate(tmlpRetriever TemplateRetriever, cfg Config, mdl llama.Mod
 }
 
 func (m *Model) Unload(ctx context.Context) error {
+	if !m.unloaded.CompareAndSwap(false, true) {
+		return nil // Already unloaded
+	}
+
 	if _, exists := ctx.Deadline(); !exists {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
+	}
+
+	// Stop the batch engine if running.
+	hasBatch := m.batch != nil
+	if hasBatch {
+		m.batch.stop(ctx)
 	}
 
 	for m.activeStreams.Load() > 0 {
@@ -215,6 +246,12 @@ func (m *Model) Unload(ctx context.Context) error {
 		}
 	}
 
+	// Free batch buffer before context (batch references context internals).
+	if hasBatch {
+		m.batch.freeBatch()
+	}
+
+	// Synchronize ensures all GPU operations complete before freeing.
 	llama.Synchronize(m.lctx)
 	llama.Free(m.lctx)
 	llama.ModelFree(m.model)
@@ -240,7 +277,7 @@ func (m *Model) resetContext() {
 	}
 }
 
-func (m *Model) processChatRequest(ctx context.Context, id string, lctx llama.Context, mtmdCtx mtmd.Context, object string, prompt string, media [][]byte, params Params, ch chan<- ChatResponse) {
+func (m *Model) sequentialChatRequest(ctx context.Context, id string, lctx llama.Context, mtmdCtx mtmd.Context, object string, prompt string, media [][]byte, params Params, ch chan<- ChatResponse) {
 	m.log(ctx, "process-chat-request", "status", "started", "id", id, "object", object)
 	defer m.log(ctx, "process-chat-request", "status", "completed", "id", id, "object", object)
 

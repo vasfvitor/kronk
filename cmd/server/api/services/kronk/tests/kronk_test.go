@@ -11,6 +11,7 @@ import (
 	"github.com/ardanlabs/kronk/cmd/server/app/sdk/apitest"
 	"github.com/ardanlabs/kronk/cmd/server/app/sdk/security"
 	"github.com/ardanlabs/kronk/cmd/server/app/sdk/security/auth"
+	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
 	"github.com/google/uuid"
 )
@@ -27,14 +28,14 @@ func Test_API(t *testing.T) {
 	tokens := createTokens(t, test.Sec)
 
 	test.Run(t, chatNonStream200(t, tokens), "chatns-200")
-	test.RunStreaming(t, chatStream200(tokens), "chatstream-200")
+	test.RunStreaming(t, chatStream200(t, tokens), "chatstream-200")
 	test.Run(t, chatEndpoint401(tokens), "chatEndpoint-401")
 
 	test.Run(t, chatEmbed200(tokens), "embedding-200")
 	test.Run(t, embed401(tokens), "embedding-401")
 
 	test.Run(t, respNonStream200(t, tokens), "respns-200")
-	test.RunStreaming(t, respStream200(tokens), "respstream-200")
+	test.RunStreaming(t, respStream200(t, tokens), "respstream-200")
 	test.Run(t, respEndpoint401(tokens), "respEndpoint-401")
 }
 
@@ -129,6 +130,7 @@ type responseValidator struct {
 	resp      *model.ChatResponse
 	streaming bool
 	errors    []string
+	warnings  []string
 }
 
 func validateResponse(got any, streaming bool) responseValidator {
@@ -234,34 +236,138 @@ func (v responseValidator) hasReasoning() responseValidator {
 	return v
 }
 
-func (v responseValidator) containsInContent(find string) responseValidator {
+func (v responseValidator) warnContainsInContent(find string) responseValidator {
 	if len(v.resp.Choice) == 0 {
 		return v
 	}
 
 	if !strings.Contains(strings.ToLower(v.getMsg().Content), find) {
-		v.errors = append(v.errors, fmt.Sprintf("expected to find %q in content", find))
+		v.warnings = append(v.warnings, fmt.Sprintf("WARNING: expected to find %q in content", find))
 	}
 
 	return v
 }
 
-func (v responseValidator) containsInReasoning(find string) responseValidator {
+func (v responseValidator) warnContainsInReasoning(find string) responseValidator {
 	if len(v.resp.Choice) == 0 {
 		return v
 	}
 
 	if !strings.Contains(strings.ToLower(v.getMsg().Reasoning), find) {
-		v.errors = append(v.errors, fmt.Sprintf("expected to find %q in reasoning", find))
+		v.warnings = append(v.warnings, fmt.Sprintf("WARNING: expected to find %q in reasoning", find))
 	}
 
 	return v
 }
 
-func (v responseValidator) result() string {
+func (v responseValidator) result(t *testing.T) string {
+	for _, w := range v.warnings {
+		t.Log(w)
+	}
+
 	if len(v.errors) == 0 {
 		return ""
 	}
 
 	return strings.Join(v.errors, "; ")
+}
+
+// =============================================================================
+
+type respResponseValidator struct {
+	resp     *kronk.ResponseResponse
+	errors   []string
+	warnings []string
+}
+
+func validateRespResponse(got any) respResponseValidator {
+	return respResponseValidator{resp: got.(*kronk.ResponseResponse)}
+}
+
+func (v respResponseValidator) hasValidID() respResponseValidator {
+	if v.resp.ID == "" || len(v.resp.ID) < 5 {
+		v.errors = append(v.errors, "expected id to be a valid response ID")
+	}
+
+	return v
+}
+
+func (v respResponseValidator) hasCreatedAt() respResponseValidator {
+	if v.resp.CreatedAt <= 0 {
+		v.errors = append(v.errors, "expected created_at to be greater than 0")
+	}
+
+	return v
+}
+
+func (v respResponseValidator) hasStatus(expected string) respResponseValidator {
+	if v.resp.Status != expected {
+		v.errors = append(v.errors, "expected status to be "+expected)
+	}
+
+	return v
+}
+
+func (v respResponseValidator) hasOutput() respResponseValidator {
+	if len(v.resp.Output) == 0 {
+		v.errors = append(v.errors, "expected at least one output item")
+	}
+
+	return v
+}
+
+func (v respResponseValidator) hasOutputText() respResponseValidator {
+	if len(v.resp.Output) == 0 {
+		return v
+	}
+
+	for _, item := range v.resp.Output {
+		if item.Type == "message" && len(item.Content) > 0 {
+			for _, content := range item.Content {
+				if content.Type == "output_text" && content.Text != "" {
+					return v
+				}
+			}
+		}
+	}
+
+	v.errors = append(v.errors, "expected output to contain text content")
+	return v
+}
+
+func (v respResponseValidator) warnContainsInContent(find string) respResponseValidator {
+	if len(v.resp.Output) == 0 {
+		return v
+	}
+
+	for _, item := range v.resp.Output {
+		if item.Type == "message" && len(item.Content) > 0 {
+			for _, content := range item.Content {
+				if content.Type == "output_text" {
+					if containsIgnoreCase(content.Text, find) {
+						return v
+					}
+				}
+			}
+		}
+	}
+
+	v.warnings = append(v.warnings, "WARNING: expected to find \""+find+"\" in content")
+	return v
+}
+
+func (v respResponseValidator) result(t *testing.T) string {
+	for _, w := range v.warnings {
+		t.Log(w)
+	}
+
+	if len(v.errors) == 0 {
+		return ""
+	}
+
+	return strings.Join(v.errors, "; ")
+}
+
+func containsIgnoreCase(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

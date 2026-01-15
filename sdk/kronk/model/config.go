@@ -158,20 +158,26 @@ func validateConfig(ctx context.Context, cfg Config, log Logger) error {
 
 	if !cfg.IgnoreIntegrityCheck {
 		for _, modelFile := range cfg.ModelFiles {
-			log(ctx, "checking-model-integrity", "model-file", modelFile)
+			log(ctx, "validate-config", "model-file", modelFile)
 
 			if err := CheckModel(modelFile, true); err != nil {
-				return fmt.Errorf("validate-config: checking-model-integrity: %w", err)
+				return fmt.Errorf("validate-config: %w", err)
 			}
 		}
 
 		if cfg.ProjFile != "" {
-			log(ctx, "checking-model-integrity", "model-file", cfg.ProjFile)
+			log(ctx, "validate-config", "model-file", cfg.ProjFile)
 
 			if err := CheckModel(cfg.ProjFile, true); err != nil {
-				return fmt.Errorf("validate-config: checking-model-integrity: %w", err)
+				return fmt.Errorf("validate-config: prog-file[%s]: %w", cfg.ProjFile, err)
 			}
 		}
+	}
+
+	// Parallel inference (NSeqMax > 1) is not supported for vision/audio models.
+	// These models require exclusive access to the context for media processing.
+	if cfg.NSeqMax > 1 && cfg.ProjFile != "" {
+		return fmt.Errorf("validate-config: NSeqMax > 1 is not supported for vision/audio models (ProjFile is set)")
 	}
 
 	return nil
@@ -267,7 +273,8 @@ func modelCtxParams(cfg Config, mi ModelInfo) llama.ContextParams {
 	}
 
 	if cfg.NSeqMax > 0 {
-		ctxParams.NSeqMax = uint32(cfg.NSeqMax)
+		// +1 to allow seqIDs 1..NSeqMax (seqID 0 reserved).
+		ctxParams.NSeqMax = uint32(cfg.NSeqMax + 1)
 	}
 
 	// Offload KQV cache to CPU.
@@ -451,7 +458,7 @@ func (t *FlashAttentionType) UnmarshalYAML(unmarshal func(interface{}) error) er
 		*t = FlashAttentionAuto
 
 	default:
-		return fmt.Errorf("unknown flash attention type: %s", s)
+		return fmt.Errorf("unmarshal-yaml: unknown flash attention type: %s", s)
 	}
 
 	return nil
@@ -529,6 +536,6 @@ func ParseSplitMode(s string) (SplitMode, error) {
 		return SplitModeRow, nil
 
 	default:
-		return SplitModeNone, fmt.Errorf("unknown split mode: %s (valid: none, layer, row, expert-parallel)", s)
+		return SplitModeNone, fmt.Errorf("parse-split-mode: unknown split mode: %s (valid: none, layer, row, expert-parallel)", s)
 	}
 }

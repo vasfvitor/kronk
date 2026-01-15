@@ -72,9 +72,9 @@ func chatNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 					hasUsage(true).
 					hasContent().
 					hasReasoning().
-					containsInContent("gorilla").
-					containsInReasoning("gorilla").
-					result()
+					warnContainsInContent("gorilla").
+					warnContainsInReasoning("gorilla").
+					result(t)
 			},
 		},
 		{
@@ -121,8 +121,8 @@ func chatNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 					hasValidChoice().
 					hasUsage(false).
 					hasContent().
-					containsInContent("giraffes").
-					result()
+					warnContainsInContent("giraffes").
+					result(t)
 			},
 		},
 		{
@@ -170,8 +170,8 @@ func chatNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 					hasValidChoice().
 					hasUsage(false).
 					hasContent().
-					containsInContent("speech").
-					result()
+					warnContainsInContent("speech").
+					result(t)
 			},
 		},
 	}
@@ -179,7 +179,7 @@ func chatNonStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 	return table
 }
 
-func chatStream200(tokens map[string]string) []apitest.Table {
+func chatStream200(t *testing.T, tokens map[string]string) []apitest.Table {
 	table := []apitest.Table{
 		{
 			Name:       "good-token",
@@ -226,7 +226,7 @@ func chatStream200(tokens map[string]string) []apitest.Table {
 					hasCreated().
 					hasValidChoice().
 					hasUsage(true).
-					result()
+					result(t)
 			},
 		},
 	}

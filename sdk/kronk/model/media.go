@@ -6,13 +6,21 @@ import (
 	"strings"
 )
 
+type MediaType int
+
+const (
+	MediaTypeNone MediaType = iota
+	MediaTypeVision
+	MediaTypeAudio
+)
+
 // detectMediaContent detects if the request contains media data in either:
 // - Form1: Plain base64 string as content (hasMedia=true, isOpenAIFormat=false)
 // - Form2: OpenAI structured format with image_url, video_url, or input_audio (hasMedia=true, isOpenAIFormat=true)
-func detectMediaContent(d D) (hasMedia bool, isOpenAIFormat bool, msgs chatMessages, err error) {
+func detectMediaContent(d D) (mediaType MediaType, isOpenAIFormat bool, msgs chatMessages, err error) {
 	msgs, err = toChatMessages(d)
 	if err != nil {
-		return false, false, chatMessages{}, fmt.Errorf("chat message conversion: %w", err)
+		return MediaTypeNone, false, chatMessages{}, fmt.Errorf("detect-media-content: chat message conversion: %w", err)
 	}
 
 	for _, msg := range msgs.Messages {
@@ -20,19 +28,21 @@ func detectMediaContent(d D) (hasMedia bool, isOpenAIFormat bool, msgs chatMessa
 		case []chatMessageContent:
 			for _, cm := range content {
 				switch cm.Type {
-				case "image_url", "video_url", "input_audio":
-					return true, true, msgs, nil
+				case "image_url", "video_url":
+					return MediaTypeVision, true, msgs, nil
+				case "input_audio":
+					return MediaTypeAudio, true, msgs, nil
 				}
 			}
 
 		case string:
-			if looksLikeMedia(content) {
-				hasMedia = true
+			if mt := detectMediaType(content); mt != MediaTypeNone {
+				mediaType = mt
 			}
 		}
 	}
 
-	return hasMedia, false, msgs, nil
+	return mediaType, false, msgs, nil
 }
 
 // convertPlainBase64ToBytes converts Form1 plain base64 string content to raw bytes.
@@ -124,9 +134,9 @@ func tryDecodeMedia(s string) []byte {
 	return nil
 }
 
-func looksLikeMedia(s string) bool {
+func detectMediaType(s string) MediaType {
 	if len(s) < 100 {
-		return false
+		return MediaTypeNone
 	}
 
 	data := s
@@ -136,50 +146,52 @@ func looksLikeMedia(s string) bool {
 
 	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
-		return false
+		return MediaTypeNone
 	}
 
 	if len(decoded) < 4 {
-		return false
+		return MediaTypeNone
 	}
 
+	// Vision formats: JPEG, PNG, GIF, WEBP
 	if decoded[0] == 0xFF && decoded[1] == 0xD8 && decoded[2] == 0xFF {
-		return true
+		return MediaTypeVision
 	}
 
 	if decoded[0] == 0x89 && decoded[1] == 'P' && decoded[2] == 'N' && decoded[3] == 'G' {
-		return true
+		return MediaTypeVision
 	}
 
 	if string(decoded[:3]) == "GIF" {
-		return true
+		return MediaTypeVision
 	}
 
 	if len(decoded) >= 12 && string(decoded[:4]) == "RIFF" && string(decoded[8:12]) == "WEBP" {
-		return true
+		return MediaTypeVision
 	}
 
+	// Audio formats: WAV, MP3, ID3, OGG, FLAC
 	if len(decoded) >= 12 && string(decoded[:4]) == "RIFF" && string(decoded[8:12]) == "WAVE" {
-		return true
+		return MediaTypeAudio
 	}
 
 	if decoded[0] == 0xFF && (decoded[1] == 0xFB || decoded[1] == 0xFA || decoded[1] == 0xF3 || decoded[1] == 0xF2) {
-		return true
+		return MediaTypeAudio
 	}
 
 	if string(decoded[:3]) == "ID3" {
-		return true
+		return MediaTypeAudio
 	}
 
 	if len(decoded) >= 4 && string(decoded[:4]) == "OggS" {
-		return true
+		return MediaTypeAudio
 	}
 
 	if len(decoded) >= 4 && string(decoded[:4]) == "fLaC" {
-		return true
+		return MediaTypeAudio
 	}
 
-	return false
+	return MediaTypeNone
 }
 
 // convertToRawMediaMessage is needed because we want to use a raw media message
@@ -187,7 +199,7 @@ func looksLikeMedia(s string) bool {
 func convertToRawMediaMessage(d D, msgs chatMessages) (D, error) {
 	d, err := toMediaMessage(d, msgs)
 	if err != nil {
-		return nil, fmt.Errorf("media message conversion: %w", err)
+		return nil, fmt.Errorf("convert-to-raw-media-message: media message conversion: %w", err)
 	}
 
 	return d, nil
@@ -282,7 +294,7 @@ func toMediaMessage(d D, msgs chatMessages) (D, error) {
 
 func decodeMediaData(data string) ([]byte, error) {
 	if strings.HasPrefix(data, "http://") || strings.HasPrefix(data, "https://") {
-		return nil, fmt.Errorf("to-media-message: URLs are not supported, provide base64 encoded data")
+		return nil, fmt.Errorf("decode-media-message: URLs are not supported, provide base64 encoded data")
 	}
 
 	if idx := strings.Index(data, ";base64,"); idx != -1 && strings.HasPrefix(data, "data:") {
@@ -291,7 +303,7 @@ func decodeMediaData(data string) ([]byte, error) {
 
 	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
-		return nil, fmt.Errorf("to-media-message: unable to decode base64 data: %w", err)
+		return nil, fmt.Errorf("decode-media-message: unable to decode base64 data: %w", err)
 	}
 
 	return decoded, nil

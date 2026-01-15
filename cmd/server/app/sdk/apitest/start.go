@@ -18,6 +18,7 @@ import (
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/observ/otel"
 	"github.com/ardanlabs/kronk/sdk/tools/catalog"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/ardanlabs/kronk/sdk/tools/templates"
@@ -109,7 +110,9 @@ func New(t *testing.T, testName string) *Test {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	libs, err := libs.New()
+	libs, err := libs.New(
+		libs.WithVersion(defaults.LibVersion("")),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +159,7 @@ func New(t *testing.T, testName string) *Test {
 		t.Fatal(err)
 	}
 
-	cache, err := cache.NewCache(cache.Config{
+	cache, err := cache.New(cache.Config{
 		Log:             log.Info,
 		Templates:       tmplts,
 		ModelsInCache:   3,

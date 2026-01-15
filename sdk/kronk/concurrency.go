@@ -3,6 +3,7 @@ package kronk
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
 )
@@ -16,7 +17,7 @@ func nonStreaming[T any](ctx context.Context, krn *Kronk, f nonStreamingFunc[T])
 	if err != nil {
 		return zero, err
 	}
-	defer krn.releaseModel(llama)
+	defer krn.releaseModel()
 
 	return f(llama)
 }
@@ -32,24 +33,30 @@ func streaming[T any](ctx context.Context, krn *Kronk, f streamingFunc[T], ef er
 		return nil, err
 	}
 
-	ch := make(chan T)
+	ch := make(chan T, 1)
 
 	go func() {
 		defer func() {
 			if rec := recover(); rec != nil {
-				sendError(ctx, ch, ef, rec)
+				sendError(ch, ef, rec)
 			}
 
 			close(ch)
-			krn.releaseModel(llama)
+			krn.releaseModel()
 		}()
 
 		lch := f(llama)
 
+		var cancelled bool
 		for msg := range lch {
 			if err := sendMessage(ctx, ch, msg); err != nil {
+				cancelled = true
 				break
 			}
+		}
+
+		if cancelled {
+			sendError(ch, ef, ctx.Err())
 		}
 	}()
 
@@ -76,11 +83,10 @@ func sendMessage[T any](ctx context.Context, ch chan T, msg T) error {
 	}
 }
 
-func sendError[T any](ctx context.Context, ch chan T, ef errorFunc[T], rec any) {
+func sendError[T any](ch chan T, ef errorFunc[T], rec any) {
 	select {
-	case <-ctx.Done():
 	case ch <- ef(fmt.Errorf("%v", rec)):
-	default:
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 
@@ -98,20 +104,27 @@ func streamingWith[T, U any](ctx context.Context, krn *Kronk, f streamingFunc[T]
 		return nil, err
 	}
 
-	ch := make(chan U)
+	ch := make(chan U, 1)
 
 	go func() {
+		var cancelled bool
+
 		defer func() {
 			if rec := recover(); rec != nil {
-				sendError(ctx, ch, ef, rec)
+				sendError(ch, ef, rec)
+			}
+
+			if cancelled {
+				sendError(ch, ef, ctx.Err())
 			}
 
 			close(ch)
-			krn.releaseModel(llama)
+			krn.releaseModel()
 		}()
 
 		for _, msg := range p.Start() {
 			if err := sendMessage(ctx, ch, msg); err != nil {
+				cancelled = true
 				return
 			}
 		}
@@ -123,6 +136,7 @@ func streamingWith[T, U any](ctx context.Context, krn *Kronk, f streamingFunc[T]
 			lastChunk = chunk
 			for _, msg := range p.Process(chunk) {
 				if err := sendMessage(ctx, ch, msg); err != nil {
+					cancelled = true
 					return
 				}
 			}
@@ -130,6 +144,7 @@ func streamingWith[T, U any](ctx context.Context, krn *Kronk, f streamingFunc[T]
 
 		for _, msg := range p.Complete(lastChunk) {
 			if err := sendMessage(ctx, ch, msg); err != nil {
+				cancelled = true
 				return
 			}
 		}
