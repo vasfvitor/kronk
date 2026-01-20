@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"syscall"
 
 	"github.com/ardanlabs/kronk/cmd/server/api/services/kronk"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
@@ -27,14 +26,12 @@ func runLocal(cmd *cobra.Command) error {
 
 		logFile, _ := os.Create(logFilePath())
 
-		proc := exec.Command(exePath, "server")
+		proc := exec.Command(exePath, "server", "start")
 		proc.Stdout = logFile
 		proc.Stderr = logFile
 		proc.Stdin = nil
 		proc.Env = append(os.Environ(), envVars...)
-		proc.SysProcAttr = &syscall.SysProcAttr{
-			Setsid: true,
-		}
+		setDetachAttrs(proc)
 
 		if err := proc.Start(); err != nil {
 			return fmt.Errorf("start: %w", err)
